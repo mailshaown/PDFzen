@@ -4,6 +4,15 @@ A Windows desktop PDF viewer/editor built with **Tauri 2**, **Rust** and a
 vanilla-JS front end. PDFs are rendered with a vendored copy of **pdf.js**, and
 edits are composed into real PDF objects by a Rust engine using **lopdf**.
 
+## Download
+
+Download the latest Windows installer from the
+[GitHub Releases page](https://github.com/mailshaown/PDFzen/releases/latest).
+
+The installer is not code-signed, so Windows SmartScreen may show a warning.
+Choose **More info** → **Run anyway** only if you downloaded it from this
+repository's Releases page.
+
 ## Features
 
 ### Reading
