@@ -6,12 +6,21 @@ edits are composed into real PDF objects by a Rust engine using **lopdf**.
 
 ## Download
 
-Download the latest Windows installer from the
+Download installers from the
 [GitHub Releases page](https://github.com/mailshaown/PDFzen/releases/latest).
 
-The installer is not code-signed, so Windows SmartScreen may show a warning.
-Choose **More info** → **Run anyway** only if you downloaded it from this
-repository's Releases page.
+| Platform | Installer |
+| --- | --- |
+| Windows 10/11 (64-bit) | [PDFzen_0.1.0_x64-setup.exe](https://github.com/mailshaown/PDFzen/releases/download/v0.1.0/PDFzen_0.1.0_x64-setup.exe) |
+| macOS Apple Silicon | [PDFzen_0.1.0_aarch64.dmg](https://github.com/mailshaown/PDFzen/releases/download/v0.1.0/PDFzen_0.1.0_aarch64.dmg) |
+| macOS Intel | [PDFzen_0.1.0_x64.dmg](https://github.com/mailshaown/PDFzen/releases/download/v0.1.0/PDFzen_0.1.0_x64.dmg) |
+
+The Windows installer is not code-signed, so Windows SmartScreen may show a
+warning. Choose **More info** → **Run anyway** only if you downloaded it from
+this repository's Releases page.
+
+The macOS builds are not signed or notarized. On first launch, right-click the
+app and choose **Open**, or allow it under **System Settings → Privacy & Security**.
 
 ## Features
 
