@@ -363,6 +363,11 @@ function createPageDom() {
     overlay.addEventListener("pointercancel", () => {
       drag = null;
     });
+    surface.addEventListener("dblclick", (ev) => onSurfaceDoubleClick(ev, i));
+    surface.addEventListener("pointermove", (ev) => onSurfacePointerMove(ev, i));
+    surface.addEventListener("pointerleave", () => {
+      surface.style.cursor = "";
+    });
 
     observer.observe(wrap);
   });
@@ -1017,32 +1022,71 @@ function commitOpenEditor() {
   });
 }
 
-function startTextEditor(i, p, mode = "text") {
+function startTextEditor(i, p, mode = "text", editIndex = null) {
   const rec = recs[i];
   const entry = state.pages[i];
   if (!rec || !entry) return;
   commitOpenEditor();
+  const editing = Number.isInteger(editIndex) ? entry.annos[editIndex] : null;
+  if (editing?.rect) {
+    mode = editing.kind;
+    p = { x: editing.rect[0], y: editing.rect[1] };
+  }
   // The shared color control starts on highlight yellow; use a readable dark
   // color for typed text until the user explicitly chooses an annotation color.
-  const editorColor = mode === "text" && !state.colorTouched ? "#1f2937" : state.color;
+  const editorColor = editing
+    ? editing.color || (mode === "text" ? "#1f2937" : state.color)
+    : mode === "text" && !state.colorTouched
+      ? "#1f2937"
+      : state.color;
+  const baseSize = Number(editing?.size) || state.fontSize;
+  const pageX = clamp(p.x);
+  const pageY = clamp(p.y);
+  const maxWidth = Math.max(80, rec.w - pageX * rec.w - 2);
+  let width = Math.max(140, Math.min(rec.w * 0.6, 320));
+  if (editing?.rect) width = Math.max(120, editing.rect[2] * rec.w);
+  width = Math.min(width, maxWidth);
+  const initialHeight = editing?.rect
+    ? Math.max(36, editing.rect[3] * rec.h)
+    : mode === "note"
+      ? 72
+      : 42;
 
   const ta = document.createElement("textarea");
   ta.className = "text-editor";
-  ta.style.left = `${p.x * rec.w}px`;
-  ta.style.top = `${p.y * rec.h}px`;
-  ta.style.width = `${Math.max(140, Math.min(rec.w * 0.6, 320))}px`;
-  ta.style.height = `${mode === "note" ? 72 : Math.max(42, 60)}px`;
+  ta.style.left = `${pageX * rec.w}px`;
+  ta.style.top = `${pageY * rec.h}px`;
+  ta.style.width = `${width}px`;
+  ta.style.height = `${initialHeight}px`;
   if (mode === "note") ta.placeholder = "Sticky note text…";
-  ta.style.fontSize = `${Math.max(9, state.fontSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
+  ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
   ta.style.color = editorColor;
+  if (editing?.text) ta.value = editing.text;
   rec.surface.appendChild(ta);
+
+  const grow = () => {
+    if (!ta.isConnected) return;
+    const available = Math.max(initialHeight, rec.h - pageY * rec.h - 2);
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(available, Math.max(initialHeight, ta.scrollHeight + 4))}px`;
+  };
+  ta.addEventListener("input", grow);
+  grow();
+
   // Focus after the pointer event finishes; otherwise the browser's default
   // focus handling for the click can leave the textarea unfocused, and a
   // later blur()/click never commits the annotation.
   ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
   setTimeout(() => {
-    if (ta.isConnected) ta.focus();
+    if (ta.isConnected) {
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
   }, 0);
+  setHint(
+    `${editing ? "Editing" : "Type"} ${mode === "note" ? "note" : "text"}. Ctrl+Enter or click outside to finish.`,
+  );
 
   let done = false;
   const cancel = () => {
@@ -1056,45 +1100,79 @@ function startTextEditor(i, p, mode = "text") {
     done = true;
     const text = ta.value.trim();
     // Measure while the editor is still in the document.
-    const boxW = ta.offsetWidth;
+    const boxW = Math.max(20, Math.min(ta.offsetWidth, rec.w - pageX * rec.w));
     const boxH = Math.max(ta.scrollHeight, ta.offsetHeight);
     ta.remove();
     if (!text) {
-      drawOverlay(i);
+      if (editing) {
+        pushHistory();
+        entry.annos.splice(editIndex, 1);
+        afterAnnotationChange(i);
+        setHint("Text box removed.");
+      } else {
+        drawOverlay(i);
+        setTool("select");
+        setHint("Text box cancelled.");
+      }
       return;
     }
     pushHistory();
     if (mode === "note") {
-      const w = Math.max(0.025, 18 / rec.w);
-      const h = Math.max(0.02, 18 / rec.h);
-      entry.annos.push({
-        kind: "note",
-        rect: [
-          Number(p.x.toFixed(4)),
-          Number(p.y.toFixed(4)),
-          Number(w.toFixed(4)),
-          Number(h.toFixed(4)),
-        ],
-        text,
-        color: state.color,
-      });
+      if (editing) {
+        editing.text = text;
+        editing.color = editorColor;
+      } else {
+        const w = Math.max(0.025, 18 / rec.w);
+        const h = Math.max(0.02, 18 / rec.h);
+        entry.annos.push({
+          kind: "note",
+          rect: [
+            Number(pageX.toFixed(4)),
+            Number(pageY.toFixed(4)),
+            Number(w.toFixed(4)),
+            Number(h.toFixed(4)),
+          ],
+          text,
+          color: editorColor,
+        });
+      }
     } else {
-      const rectW = clamp(boxW / rec.w, 0.02, 0.98);
-      const rectH = clamp(boxH / rec.h, 0.01, 0.98);
-      entry.annos.push({
-        kind: "text",
-        rect: [
-          Number(p.x.toFixed(4)),
-          Number(p.y.toFixed(4)),
+      const rectW = clamp(boxW / rec.w, 0.02, Math.max(0.02, 1 - pageX));
+      const rectH = clamp(boxH / rec.h, 0.01, Math.max(0.01, 1 - pageY));
+      if (editing) {
+        editing.rect = [
+          Number(pageX.toFixed(4)),
+          Number(pageY.toFixed(4)),
           Number(rectW.toFixed(4)),
           Number(rectH.toFixed(4)),
-        ],
-        text,
-        color: editorColor,
-        size: state.fontSize,
-      });
+        ];
+        editing.text = text;
+        editing.color = editorColor;
+        editing.size = baseSize;
+      } else {
+        entry.annos.push({
+          kind: "text",
+          rect: [
+            Number(pageX.toFixed(4)),
+            Number(pageY.toFixed(4)),
+            Number(rectW.toFixed(4)),
+            Number(rectH.toFixed(4)),
+          ],
+          text,
+          color: editorColor,
+          size: baseSize,
+        });
+      }
     }
     afterAnnotationChange(i);
+    if (!editing) {
+      // Finish the insertion instead of immediately starting another empty
+      // text box at the pointer-up location.
+      setTool("select");
+      setHint(`${mode === "note" ? "Note" : "Text"} added. Double-click it with Select to edit.`);
+    } else {
+      setHint("Text updated. Save to embed it.");
+    }
   };
 
   ta.__commit = commit;
@@ -1117,6 +1195,51 @@ function pointInRect(p, rect, pad = 0.004) {
     p.y >= rect[1] - pad &&
     p.y <= rect[1] + rect[3] + pad
   );
+}
+
+function editableAnnotationAt(entry, p) {
+  if (!entry) return -1;
+  for (let idx = entry.annos.length - 1; idx >= 0; idx--) {
+    const anno = entry.annos[idx];
+    if (
+      (anno.kind === "text" || anno.kind === "note") &&
+      anno.rect &&
+      pointInRect(p, anno.rect)
+    ) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
+function onSurfaceDoubleClick(ev, i) {
+  if (state.tool !== "select") return;
+  const rec = recs[i];
+  const entry = state.pages[i];
+  if (!rec || !entry) return;
+  const target = ev.target instanceof Element ? ev.target : null;
+  if (target?.closest(".text-editor")) return;
+  const editIndex = editableAnnotationAt(entry, normPoint(rec, ev));
+  if (editIndex < 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  window.getSelection()?.removeAllRanges();
+  const anno = entry.annos[editIndex];
+  startTextEditor(i, { x: anno.rect[0], y: anno.rect[1] }, anno.kind, editIndex);
+}
+
+function onSurfacePointerMove(ev, i) {
+  const rec = recs[i];
+  const entry = state.pages[i];
+  if (!rec || !entry) return;
+  if (state.tool !== "select") {
+    rec.surface.style.cursor = "";
+    return;
+  }
+  const target = ev.target instanceof Element ? ev.target : null;
+  if (target?.closest(".text-editor")) return;
+  const editable = editableAnnotationAt(entry, normPoint(rec, ev)) >= 0;
+  rec.surface.style.cursor = editable ? "text" : "";
 }
 
 function nearPolyline(p, points, tol = 0.01) {
@@ -2892,6 +3015,11 @@ function setTool(tool) {
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-pressed", String(active));
   });
+  if (tool === "text") {
+    setHint("Click a page to add text. Double-click existing text with Select to edit.");
+  } else if (tool === "note") {
+    setHint("Click a page to add a sticky note.");
+  }
   updateStatus();
 }
 
@@ -3417,6 +3545,7 @@ window.__pdfed = {
   buildPayload,
   openBase64Pdf,
   setTool,
+  startTextEditor,
   captureTextSelection,
   highlightSelection,
   openCommentPopover,

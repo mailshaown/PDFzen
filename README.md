@@ -47,7 +47,9 @@ app and choose **Open**, or allow it under **System Settings → Privacy & Secur
 
 Highlight, underline, strikeout, squiggly, freehand pen, rectangle, typed text,
 sticky notes, stamps, signature images, and black redaction boxes. Choose a
-colour and stroke width; erase annotations with the eraser. Text boxes are
+colour and stroke width; erase annotations with the eraser. Text boxes accept
+typing directly on the page, expand as you type, and can be resized horizontally.
+Double-click an inserted text box in Select mode to edit it again. Text boxes are
 committed with `Ctrl+Enter`, by clicking outside, or by switching tools. The
 annotation toolbar is icon-based; hover a tool to see its name and shortcut. The
 pen tool uses a pen-shaped cursor, the eraser uses an eraser cursor, and the text
