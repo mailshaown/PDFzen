@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDFzen</title>
+    <script>
+      // Apply the saved theme before the stylesheet loads to avoid a flash.
+      (() => {
+        const modes = ["auto", "light", "dark"];
+        let mode = "auto";
+        try {
+          const saved = JSON.parse(
+            localStorage.getItem("pdfzen-settings") ||
+              localStorage.getItem("pdf-editor-settings") ||
+              "{}",
+          );
+          if (modes.includes(saved.theme)) mode = saved.theme;
+        } catch {
+          /* ignore corrupt settings */
+        }
+        const dark =
+          mode === "dark" ||
+          (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.themeMode = mode;
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="/vendor/pdf.min.js"></script>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body class="tool-select">
+    <div class="app">
+      <header class="toolbar">
+        <div class="brand" title="PDFzen" aria-label="PDFzen">
+          <img class="brand-mark" src="/assets/pdfzen-icon.svg" alt="" />
+          <span class="brand-name">PDFzen</span>
+        </div>
+        <div class="group">
+          <button id="btn-open" class="btn primary">Open</button>
+          <button id="btn-add" class="btn">Add pages…</button>
+          <button id="btn-save" class="btn">Save</button>
+          <button id="btn-save-as" class="btn">Save as…</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="group tools" id="tool-group" role="toolbar" aria-label="Annotation tools">
+          <button class="tool" data-tool="select" aria-label="Select text or pan" title="Select text / pan (V)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 2.5 19.5 11l-6.6 1.6L10 20z" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="highlight" aria-label="Highlight" title="Highlight (H)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="m9 11-6 6v3h9l3-3" />
+              <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4z" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="underline" aria-label="Underline" title="Underline (U)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 4v6a6 6 0 0 0 12 0V4" />
+              <path d="M4 20h16" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="strikeout" aria-label="Strike out" title="Strike out (K)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M16 4H9a3 3 0 0 0-2.83 4" />
+              <path d="M14 12a4 4 0 0 1 0 8H6" />
+              <path d="M4 12h16" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="squiggly" aria-label="Squiggly underline" title="Squiggly underline (J)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7h16" />
+              <path d="M3 16c2.5-4 5-4 7 0s4.5 4 7 0 3-2 4-1" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="ink" aria-label="Pen" title="Pen (P)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+              <path d="m15 5 4 4" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="square" aria-label="Rectangle" title="Rectangle (R)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="4" y="5" width="16" height="14" rx="1.5" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="text" aria-label="Text box" title="Text box (T)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7V4h16v3" />
+              <path d="M9 20h6" />
+              <path d="M12 4v16" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="note" aria-label="Sticky note" title="Sticky note (N)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 4h16v10l-6 6H4z" />
+              <path d="M20 14h-6v6" />
+              <path d="M8 9h8" />
+              <path d="M8 12h5" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="stamp" aria-label="Stamp" title="Stamp (M)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 21h14" />
+              <path d="M9 17h6v-2H9z" />
+              <path d="M10 15v-3a2 2 0 1 1 4 0v3" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="redact" aria-label="Black redaction box" title="Black box (X)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3" y="5" width="18" height="14" rx="2" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="crop" aria-label="Crop page" title="Crop page (C)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+              <path d="M2 6h14a2 2 0 0 1 2 2v14" />
+            </svg>
+          </button>
+          <button class="tool" data-tool="erase" aria-label="Erase annotation" title="Erase annotation (E)">
+            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4L13 5a2 2 0 0 1 2.8 0l5.2 5.2a2 2 0 0 1 0 2.8L13 21z" />
+              <path d="M22 21H7" />
+              <path d="m5 11 9 9" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="group">
+          <input type="color" id="color" value="#ffd400" title="Annotation colour" />
+          <input type="range" id="width" min="1" max="12" value="2" title="Stroke width" />
+          <select id="stamp-label" class="select" title="Stamp label">
+            <option>APPROVED</option>
+            <option>DRAFT</option>
+            <option>CONFIDENTIAL</option>
+            <option>REVIEWED</option>
+            <option>REVISED</option>
+            <option>VOID</option>
+          </select>
+        </div>
+
+        <div class="group">
+          <button id="btn-sign" class="btn" title="Draw and place a signature">Sign…</button>
+          <button id="btn-print" class="btn" title="Print (Ctrl+P)">Print</button>
+          <div class="menu-wrap">
+            <button id="btn-export" class="btn" title="Export">Export ▾</button>
+            <div id="export-menu" class="menu hidden">
+              <button data-export="text">Text (.txt)</button>
+              <button data-export="png">Current page as PNG…</button>
+              <button data-export="images">Embedded images…</button>
+              <button data-export="images-pdf">Create PDF from images…</button>
+            </div>
+          </div>
+          <button id="btn-options" class="btn" title="Document &amp; save options">Options…</button>
+          <div class="menu-wrap theme-wrap">
+            <button
+              id="btn-theme"
+              class="btn icon theme-toggle"
+              title="Theme: Auto"
+              aria-label="Theme: Auto"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <svg class="theme-icon theme-icon-auto" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" />
+              </svg>
+              <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+              </svg>
+              <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />
+              </svg>
+            </button>
+            <div id="theme-menu" class="menu theme-menu hidden" role="menu" aria-label="Theme">
+              <button type="button" data-theme="auto" role="menuitemradio" aria-checked="true">
+                <span>Auto (device)</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+              </button>
+              <button type="button" data-theme="light" role="menuitemradio" aria-checked="false">
+                <span>Light</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+              </button>
+              <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
+                <span>Dark</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)">Undo</button>
+          <button id="btn-redo" class="btn" title="Redo (Ctrl+Y)">Redo</button>
+        </div>
+
+        <div class="group push">
+          <button id="btn-zoom-out" class="btn icon" title="Zoom out">−</button>
+          <span id="zoom-label" class="label">100%</span>
+          <button id="btn-zoom-in" class="btn icon" title="Zoom in">+</button>
+          <button id="btn-fit" class="btn" title="Fit width">Fit</button>
+        </div>
+
+        <div class="group">
+          <input id="search" type="search" placeholder="Find in document…" />
+          <span id="search-label" class="label"></span>
+          <button id="btn-search-prev" class="btn icon" title="Previous match">↑</button>
+          <button id="btn-search-next" class="btn icon" title="Next match">↓</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="sidebar">
+          <div class="tabs">
+            <button class="tab active" data-tab="thumbs">Pages</button>
+            <button class="tab" data-tab="outline">Bookmarks</button>
+            <button class="tab" data-tab="comments">Comments</button>
+          </div>
+
+          <div id="bookmark-tools" class="pane-tools hidden">
+            <input id="bookmark-title" class="text-input" type="text" placeholder="Bookmark title" />
+            <button id="btn-add-bookmark" class="btn primary" title="Add a bookmark on the current page">Add</button>
+          </div>
+          <div id="comment-tools" class="pane-tools hidden">
+            <input id="comment-draft" class="text-input" type="text" placeholder="Comment on this page" />
+            <button id="btn-add-comment" class="btn primary" title="Add a comment to the current page">Add</button>
+          </div>
+
+          <div class="sidebar-actions">
+            <button id="btn-rot-left" class="btn icon" title="Rotate page left">⟲</button>
+            <button id="btn-rot-right" class="btn icon" title="Rotate page right">⟳</button>
+            <button id="btn-move-up" class="btn icon" title="Move page up">↑</button>
+            <button id="btn-move-down" class="btn icon" title="Move page down">↓</button>
+            <button id="btn-delete" class="btn icon danger" title="Delete page">🗑</button>
+            <button id="btn-extract" class="btn" title="Save current page as a new PDF">Extract</button>
+          </div>
+          <div class="sidebar-actions">
+            <button
+              id="btn-insert-blank"
+              class="btn"
+              title="Create a blank page; inserts after the current page when a PDF is open"
+            >
+              + Blank
+            </button>
+            <button id="btn-split" class="btn" title="Split into one file per page">Split…</button>
+            <button id="btn-reverse" class="btn" title="Reverse page order">Reverse</button>
+            <button id="btn-clear-crop" class="btn" title="Remove crop on the current page">Clear crop</button>
+          </div>
+
+          <div id="thumbs" class="thumbs pane"></div>
+          <div id="outline" class="outline pane hidden"></div>
+          <div id="comments" class="comments pane hidden"></div>
+        </aside>
+
+        <div
+          id="sidebar-resizer"
+          class="sidebar-resizer"
+          role="separator"
+          aria-label="Resize pages panel"
+          aria-orientation="vertical"
+          aria-valuemin="176"
+          aria-valuemax="960"
+          aria-valuenow="224"
+          tabindex="0"
+          title="Drag to resize the pages panel (double-click to reset)"
+        ></div>
+
+        <main id="viewer" class="viewer">
+          <div id="empty" class="empty">
+            <h1>PDFzen</h1>
+            <p>
+              Open a PDF to view, annotate, fill and sign, drag a file here, or use
+              <strong>+ Blank</strong> to start a blank PDF.
+            </p>
+            <button id="btn-open-empty" class="btn primary">Open PDF</button>
+          </div>
+          <div id="pages" class="pages"></div>
+        </main>
+      </div>
+
+      <div id="selection-menu" class="selection-menu hidden" role="toolbar" aria-label="Text selection actions">
+        <button id="btn-selection-highlight" class="btn">Highlight</button>
+        <button id="btn-selection-comment" class="btn primary">Comment</button>
+      </div>
+
+      <div id="comment-popover" class="comment-popover hidden" role="dialog" aria-label="Comment on highlight">
+        <div class="comment-popover-head">
+          <strong>Comment</strong>
+          <span class="muted">on highlight</span>
+        </div>
+        <textarea
+          id="comment-popover-text"
+          class="comment-popover-text"
+          rows="3"
+          placeholder="Add a comment to this highlight…"
+        ></textarea>
+        <div class="comment-popover-actions">
+          <button id="btn-comment-remove" class="btn danger hidden">Remove</button>
+          <span class="push"></span>
+          <button id="btn-comment-cancel" class="btn">Cancel</button>
+          <button id="btn-comment-save" class="btn primary">Save</button>
+        </div>
+      </div>
+
+      <footer class="statusbar">
+        <span id="status-page">No document</span>
+        <span id="status-tool" class="muted">Select</span>
+        <span id="status-hint" class="muted push">Open a PDF to get started</span>
+      </footer>
+    </div>
+
+    <!-- signature pad -->
+    <div id="modal-sign" class="modal hidden">
+      <div class="modal-card sign-card">
+        <h2>Add signature</h2>
+        <p class="muted">Type your name for a clean signature, or draw it with the mouse or a pen.</p>
+        <div class="sign-tabs" role="tablist" aria-label="Signature method">
+          <button id="sign-tab-type" class="sign-tab active" data-sign-mode="type" role="tab" aria-selected="true">
+            Type to sign
+          </button>
+          <button id="sign-tab-draw" class="sign-tab" data-sign-mode="draw" role="tab" aria-selected="false">
+            Draw signature
+          </button>
+        </div>
+        <div id="sign-type-pane" class="sign-pane">
+          <div class="signature-fields">
+            <label class="sign-name">Full name
+              <input id="sign-name" class="text-input" type="text" maxlength="80" autocomplete="name" placeholder="Type your full name" />
+            </label>
+            <label>Style
+              <select id="sign-font" class="select">
+                <option value="segoe">Classic script</option>
+                <option value="brush">Brush script</option>
+                <option value="handwriting">Handwritten</option>
+                <option value="formal">Formal serif</option>
+              </select>
+            </label>
+            <label>Ink
+              <input id="sign-color" type="color" value="#14213d" title="Signature ink colour" />
+            </label>
+          </div>
+          <canvas id="sign-preview" width="800" height="220" class="sign-preview"></canvas>
+        </div>
+        <div id="sign-draw-pane" class="sign-pane hidden">
+          <canvas id="sign-pad" width="640" height="220" class="sign-pad"></canvas>
+        </div>
+        <div class="modal-actions">
+          <button id="sign-clear" class="btn">Clear</button>
+          <span class="push"></span>
+          <button id="sign-cancel" class="btn">Cancel</button>
+          <button id="sign-use" class="btn primary">Use signature</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- options -->
+    <div id="modal-options" class="modal hidden">
+      <div class="modal-card wide">
+        <h2>Document &amp; save options</h2>
+        <div class="options-grid">
+          <section>
+            <h3>Save behaviour</h3>
+            <label class="check"><input type="checkbox" id="opt-flatten" /> Flatten annotations into page content</label>
+            <label class="check"><input type="checkbox" id="opt-remove-metadata" /> Remove document metadata</label>
+            <label class="check"><input type="checkbox" id="opt-page-numbers" /> Add page numbers (n / total)</label>
+            <p class="hint">Flattening bakes highlights, ink, shapes, stamps and images. Sticky notes have no appearance stream and are dropped when flattening.</p>
+          </section>
+          <section>
+            <h3>Watermark</h3>
+            <input id="opt-watermark" class="text-input" type="text" placeholder="Watermark text (blank for none)" />
+            <label class="inline">Opacity <input id="opt-watermark-opacity" type="range" min="2" max="60" value="12" /> <span id="opt-wm-value">12%</span></label>
+            <label class="inline">Angle <input id="opt-watermark-angle" type="range" min="0" max="90" value="45" /> <span id="opt-wm-angle-value">45°</span></label>
+          </section>
+          <section class="span-2">
+            <h3>Document information</h3>
+            <div class="meta-grid">
+              <label>Title <input id="meta-title" class="text-input" type="text" /></label>
+              <label>Author <input id="meta-author" class="text-input" type="text" /></label>
+              <label>Subject <input id="meta-subject" class="text-input" type="text" /></label>
+              <label>Keywords <input id="meta-keywords" class="text-input" type="text" placeholder="comma separated" /></label>
+            </div>
+          </section>
+          <section class="span-2">
+            <h3>Password protection</h3>
+            <label class="check"><input type="checkbox" id="opt-protect" /> Protect the saved PDF with a password (AES-256)</label>
+            <div id="protect-fields" class="protect-fields disabled">
+              <div class="password-grid">
+                <label>Open password <input id="opt-user-password" class="text-input" type="password" autocomplete="new-password" /></label>
+                <label>Confirm open password <input id="opt-user-password2" class="text-input" type="password" autocomplete="new-password" /></label>
+                <label>Owner password (optional) <input id="opt-owner-password" class="text-input" type="password" autocomplete="new-password" placeholder="Defaults to the open password" /></label>
+              </div>
+              <div class="permissions">
+                <label class="check"><input type="checkbox" id="perm-print" checked /> Allow printing</label>
+                <label class="check"><input type="checkbox" id="perm-copy" checked /> Allow copying text</label>
+                <label class="check"><input type="checkbox" id="perm-modify" /> Allow editing content</label>
+                <label class="check"><input type="checkbox" id="perm-annotate" /> Allow annotations and forms</label>
+                <label class="check"><input type="checkbox" id="perm-assemble" /> Allow page assembly</label>
+              </div>
+              <p class="hint">The open password is required to view the PDF. Editing permissions are advisory and may be ignored by some readers. PDFzen also appends an HMAC-SHA256 integrity seal and verifies it when the file is reopened; this is not a certificate-based digital signature. Passwords are kept in memory for this session only and are not saved in settings.</p>
+            </div>
+          </section>
+        </div>
+        <div class="modal-actions">
+          <button id="options-cancel" class="btn">Cancel</button>
+          <button id="options-apply" class="btn primary">Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- password prompt -->
+    <div id="modal-password" class="modal hidden">
+      <div class="modal-card slim">
+        <h2>Password required</h2>
+        <p id="password-message" class="muted">This PDF is protected. Enter its password.</p>
+        <input id="password-input" class="text-input" type="password" autocomplete="current-password" />
+        <p id="password-error" class="error" role="alert"></p>
+        <div class="modal-actions">
+          <button id="password-cancel" class="btn">Cancel</button>
+          <span class="push"></span>
+          <button id="password-open" class="btn primary">Open</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="print-area" id="print-area" aria-hidden="true"></div>
+  </body>
+</html>

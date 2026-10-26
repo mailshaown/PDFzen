@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="96" y1="64" x2="928" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1F4D70"/>
+      <stop offset="0.5" stop-color="#1A3E5C"/>
+      <stop offset="1" stop-color="#0F1E38"/>
+    </linearGradient>
+    <linearGradient id="page" x1="288" y1="224" x2="736" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F3F9FC"/>
+    </linearGradient>
+    <linearGradient id="z" x1="352" y1="352" x2="672" y2="672" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2CD4C4"/>
+      <stop offset="0.55" stop-color="#2FD5ED"/>
+      <stop offset="1" stop-color="#23D3E8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="240" cy="160" r="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8BE7FF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#8BE7FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="pageShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#061326" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#glow)"/>
+  <rect x="44" y="44" width="936" height="936" rx="212" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="6"/>
+
+  <rect x="288" y="224" width="448" height="576" rx="34" fill="url(#page)" filter="url(#pageShadow)"/>
+  <path d="M640 224h62a34 34 0 0 1 34 34v62z" fill="#B9E9FA" fill-opacity="0.42"/>
+
+  <path d="M388 388h248L388 636h248" fill="none" stroke="url(#z)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

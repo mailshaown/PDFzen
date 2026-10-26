@@ -1,0 +1,43 @@
+[package]
+name = "pdfzen"
+version = "0.1.0"
+description = "PDFzen - PDF viewer, editor, and signer for Windows"
+authors = ["PDFzen"]
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "pdfzen_lib"
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pdf = "0.9"
+lopdf = "0.34"
+anyhow = "1.0"
+base64 = "0.22"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+pdfrum-crypt = "0.5.3"
+pdfrum-object = "0.5.3"
+getrandom = "0.4"
+hmac = "0.13"
+sha2 = "0.11"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,5 @@
+# The project lives in a folder whose path contains a space ("Default Project").
+# The MinGW resource compiler (windres) used for the windows-gnu target cannot
+# handle spaces in -I paths, so build artifacts are kept in a space-free folder.
+[build]
+target-dir = "C:/pdfed-target"
