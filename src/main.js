@@ -377,9 +377,13 @@ function createPageDom() {
     const overlay = document.createElement("canvas");
     overlay.className = "page-overlay";
 
+    const formLayer = document.createElement("div");
+    formLayer.className = "page-forms";
+
     surface.appendChild(canvas);
     surface.appendChild(textWrap);
     surface.appendChild(overlay);
+    surface.appendChild(formLayer);
     wrap.appendChild(label);
     wrap.appendChild(surface);
     els.pages.appendChild(wrap);
@@ -391,6 +395,7 @@ function createPageDom() {
       textWrap,
       textLayer,
       overlay,
+      formLayer,
       ctx: canvas.getContext("2d"),
       octx: overlay.getContext("2d"),
       w: 0,
@@ -448,9 +453,12 @@ async function relayout() {
     rec.textWrap.style.height = `${h}px`;
     rec.textLayer.style.width = `${w}px`;
     rec.textLayer.style.height = `${h}px`;
+    rec.formLayer.style.width = `${w}px`;
+    rec.formLayer.style.height = `${h}px`;
     rec.dirty = true;
     rec.textScale = -1;
     drawOverlay(i);
+    renderPageForms(i);
   });
 
   els.zoomLabel.textContent = `${Math.round(state.scale * 100)}%`;
@@ -462,6 +470,230 @@ async function relayout() {
   }
   paintVisible();
   updateStatus();
+}
+
+function formControlFontSize(field) {
+  return Math.max(8, field.fontSize * state.scale);
+}
+
+function formControlPadding(field) {
+  return Math.max(1, formControlFontSize(field) * 0.16);
+}
+
+function formFieldWrapStyle(wrap, field, rec) {
+  wrap.style.left = `${field.rect[0] * rec.w}px`;
+  wrap.style.top = `${field.rect[1] * rec.h}px`;
+  wrap.style.width = `${Math.max(1, field.rect[2] * rec.w)}px`;
+  wrap.style.height = `${Math.max(1, field.rect[3] * rec.h)}px`;
+  wrap.style.color = field.color || "#1f2937";
+  if (field.background) wrap.style.background = field.background;
+  if (field.borderWidth > 0 && field.borderColor) {
+    const width = Math.max(1, field.borderWidth * state.scale);
+    wrap.style.border = `${width}px solid ${field.borderColor}`;
+  }
+}
+
+function formControlBaseStyle(control, field) {
+  control.style.fontFamily = textFontCss(field.font);
+  control.style.fontSize = `${formControlFontSize(field)}px`;
+  control.style.color = field.color;
+  control.style.textAlign = ["left", "center", "right"][field.alignment] || "left";
+  control.style.background = "transparent";
+  control.style.border = "0";
+  control.style.padding = `${formControlPadding(field)}px`;
+}
+
+function syncRadioGroup(group, selectedId) {
+  if (!group) return;
+  for (const wrap of document.querySelectorAll(".form-field")) {
+    if (wrap.dataset.radioGroup !== group) continue;
+    const control = wrap.querySelector(".form-button-control");
+    const selected = wrap.dataset.fieldId === selectedId;
+    if (control) control.checked = selected;
+    wrap.classList.toggle("checked", selected);
+  }
+}
+
+function attachFormControlEvents(control, field, wrap, pageIndex) {
+  if (field.readOnly) return;
+  let began = false;
+  const beginEdit = () => {
+    if (began) return;
+    pushHistory();
+    began = true;
+  };
+  const finishEdit = () => {
+    began = false;
+  };
+
+  if (field.kind === "checkbox" || field.kind === "radio") {
+    control.addEventListener("pointerdown", finishEdit);
+    control.addEventListener("focus", finishEdit);
+    control.addEventListener("change", () => {
+      beginEdit();
+      if (field.kind === "radio") {
+        for (const entry of state.pages) {
+          for (const other of entry.fields || []) {
+            if (other.kind === "radio" && other.radioGroup === field.radioGroup) {
+              other.checked = other.id === field.id;
+            }
+          }
+        }
+        syncRadioGroup(field.radioGroup, field.id);
+      } else {
+        field.checked = !!control.checked;
+        wrap.classList.toggle("checked", field.checked);
+      }
+      updateStatus();
+    });
+    control.addEventListener("blur", finishEdit);
+    return;
+  }
+
+  control.addEventListener("focus", finishEdit);
+  control.addEventListener("pointerdown", finishEdit);
+  control.addEventListener("input", () => {
+    beginEdit();
+    if (field.kind === "choice") {
+      const values = Array.from(control.selectedOptions || []).map((option) => option.value);
+      field.values = values;
+      field.value = values[0] || "";
+    } else {
+      field.value = control.value;
+    }
+    updateStatus();
+  });
+  control.addEventListener("blur", finishEdit);
+}
+
+function renderPageForms(pageIndex) {
+  const rec = recs[pageIndex];
+  const entry = state.pages[pageIndex];
+  if (!rec?.formLayer || !entry) return;
+  if (!Array.isArray(entry.fields)) entry.fields = [];
+  const layer = rec.formLayer;
+  const active = document.activeElement;
+  const activeWrap = active instanceof Element ? active.closest(".form-field") : null;
+  const focusState = activeWrap && layer.contains(activeWrap)
+    ? {
+        id: activeWrap.dataset.fieldId,
+        start: typeof active.selectionStart === "number" ? active.selectionStart : null,
+        end: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+      }
+    : null;
+
+  layer.innerHTML = "";
+  for (const field of entry.fields) {
+    const wrap = document.createElement("div");
+    wrap.className = `form-field form-${field.kind}`;
+    if (field.readOnly) wrap.classList.add("readonly");
+    if (field.checked) wrap.classList.add("checked");
+    wrap.dataset.fieldId = field.id;
+    if (field.radioGroup) wrap.dataset.radioGroup = field.radioGroup;
+    wrap.title = field.tooltip || field.name;
+    wrap.setAttribute("aria-label", field.tooltip || field.name);
+    formFieldWrapStyle(wrap, field, rec);
+    if (!field.background && !field.borderColor) wrap.classList.add("form-plain");
+
+    if (field.kind === "checkbox" || field.kind === "radio") {
+      const control = document.createElement("input");
+      control.type = field.kind === "radio" ? "radio" : "checkbox";
+      control.className = "form-control form-button-control";
+      control.checked = !!field.checked;
+      control.disabled = !!field.readOnly;
+      control.name =
+        field.kind === "radio"
+          ? `form-radio-${field.radioGroup || field.id}`
+          : `form-check-${field.id}`;
+      const mark = document.createElement("span");
+      mark.className = "form-mark";
+      wrap.appendChild(control);
+      wrap.appendChild(mark);
+      attachFormControlEvents(control, field, wrap, pageIndex);
+      layer.appendChild(wrap);
+      continue;
+    }
+
+    if (field.kind === "choice") {
+      const select = document.createElement("select");
+      select.className = "form-control form-choice-control";
+      select.disabled = !!field.readOnly;
+      select.multiple = !!field.multiSelect;
+      if (!field.combo && !field.multiSelect) {
+        select.size = Math.max(2, Math.min(8, (field.options || []).length || 2));
+      }
+      formControlBaseStyle(select, field);
+      const selected = new Set(field.values?.length ? field.values : field.value ? [field.value] : []);
+      let found = false;
+      if (!field.combo && (!field.options || !field.options.length)) {
+        const option = document.createElement("option");
+        option.value = field.value || "";
+        option.textContent = field.value || "";
+        select.appendChild(option);
+        found = true;
+      } else {
+        if (field.combo && !field.value) {
+          const empty = document.createElement("option");
+          empty.value = "";
+          empty.textContent = "";
+          select.appendChild(empty);
+        }
+        for (const option of field.options || []) {
+          const el = document.createElement("option");
+          el.value = option.export;
+          el.textContent = option.display || option.export;
+          el.selected = selected.has(option.export);
+          if (el.selected) found = true;
+          select.appendChild(el);
+        }
+        if (!found && field.value) {
+          const el = document.createElement("option");
+          el.value = field.value;
+          el.textContent = field.value;
+          el.selected = true;
+          select.appendChild(el);
+        }
+      }
+      wrap.appendChild(select);
+      attachFormControlEvents(select, field, wrap, pageIndex);
+      layer.appendChild(wrap);
+      continue;
+    }
+
+    const control = document.createElement(field.multiline ? "textarea" : "input");
+    control.className = "form-control form-text-control";
+    if (!field.multiline) control.type = "text";
+    else control.rows = 2;
+    control.value = field.value || "";
+    control.readOnly = !!field.readOnly;
+    control.spellcheck = !field.signature;
+    if (field.signature) control.placeholder = "Type to sign";
+    control.maxLength = field.max_len || 524288;
+    formControlBaseStyle(control, field);
+    control.style.lineHeight = "1.2";
+    if (field.kind === "text" && field.alignment === 1) control.style.textAlign = "center";
+    if (field.kind === "text" && field.alignment === 2) control.style.textAlign = "right";
+    wrap.appendChild(control);
+    attachFormControlEvents(control, field, wrap, pageIndex);
+    layer.appendChild(wrap);
+  }
+
+  if (focusState?.id) {
+    const wrap = [...layer.querySelectorAll(".form-field")].find(
+      (item) => item.dataset.fieldId === focusState.id,
+    );
+    const control = wrap?.querySelector(".form-control");
+    if (control) {
+      control.focus({ preventScroll: true });
+      if (focusState.start != null && typeof control.setSelectionRange === "function") {
+        try {
+          control.setSelectionRange(focusState.start, focusState.end ?? focusState.start);
+        } catch {
+          /* select elements do not support selection ranges */
+        }
+      }
+    }
+  }
 }
 
 function pageInViewport(i) {
@@ -853,7 +1085,9 @@ function drawAnnotations(ctx, entry, w, h) {
       String(a.text || "")
         .split("\n")
         .forEach((line, idx) => {
-          ctx.fillText(line, x * w + 2, y * h + idx * size * 1.2);
+          // The editor uses a 1.2 line box, so the first line has half-leading
+          // above it. Match the click point exactly in the committed overlay.
+          ctx.fillText(line, x * w, y * h + idx * size * 1.2 + size * 0.1);
         });
       ctx.restore();
     } else if (a.kind === "note") {
@@ -1170,15 +1404,20 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   let editorFont = normalizeTextFont(editing?.font || state.fontFamily);
   const pageX = clamp(p.x);
   const pageY = clamp(p.y);
-  const maxWidth = Math.max(80, rec.w - pageX * rec.w - 2);
+  const editorFontPx = Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)));
+  const availableWidth = Math.max(12, rec.w - pageX * rec.w - 1);
+  const availableHeight = Math.max(12, rec.h - pageY * rec.h - 1);
+  const minWidth = Math.min(mode === "note" ? 80 : 48, availableWidth);
   let width = Math.max(140, Math.min(rec.w * 0.6, 320));
   if (editing?.rect) width = Math.max(120, editing.rect[2] * rec.w);
-  width = Math.min(width, maxWidth);
-  const initialHeight = editing?.rect
-    ? Math.max(36, editing.rect[3] * rec.h)
+  width = Math.max(minWidth, Math.min(width, availableWidth));
+  let initialHeight = editing?.rect
+    ? Math.max(24, editing.rect[3] * rec.h)
     : mode === "note"
       ? 72
-      : 42;
+      : Math.ceil(editorFontPx * 1.2 + 8);
+  initialHeight = Math.min(initialHeight, availableHeight);
+  const minHeight = Math.min(mode === "note" ? 36 : 24, availableHeight);
 
   const ta = document.createElement("textarea");
   ta.className = "text-editor";
@@ -1187,11 +1426,14 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   ta.style.top = `${pageY * rec.h}px`;
   ta.style.width = `${width}px`;
   ta.style.height = `${initialHeight}px`;
-  ta.style.maxWidth = `${Math.max(80, rec.w - pageX * rec.w)}px`;
-  ta.style.maxHeight = `${Math.max(36, rec.h - pageY * rec.h)}px`;
+  ta.style.minWidth = `${minWidth}px`;
+  ta.style.minHeight = `${minHeight}px`;
+  // Keep the box inside the page even when the user clicks near an edge.
+  ta.style.maxWidth = `${availableWidth}px`;
+  ta.style.maxHeight = `${availableHeight}px`;
   if (mode === "note") ta.placeholder = "Sticky note text…";
   ta.style.fontFamily = textFontCss(editorFont);
-  ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
+  ta.style.fontSize = `${editorFontPx}px`;
   ta.style.color = editorColor;
   if (editing?.text) ta.value = editing.text;
   rec.surface.appendChild(ta);
@@ -1199,9 +1441,8 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   let autoGrow = true;
   const grow = () => {
     if (!ta.isConnected || !autoGrow) return;
-    const available = Math.max(initialHeight, rec.h - pageY * rec.h - 2);
     ta.style.height = "auto";
-    ta.style.height = `${Math.min(available, Math.max(initialHeight, ta.scrollHeight + 4))}px`;
+    ta.style.height = `${Math.min(availableHeight, Math.max(initialHeight, ta.scrollHeight + 4))}px`;
     scheduleTextFormatPosition();
   };
   ta.addEventListener("input", grow);
@@ -1347,7 +1588,8 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
       setSize(value) {
         baseSize = normalizeTextSize(value);
         format.size = baseSize;
-        ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
+        const sizePx = Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)));
+        ta.style.fontSize = `${sizePx}px`;
         state.fontSize = baseSize;
         els.textSize.value = String(baseSize);
         grow();
@@ -1572,7 +1814,7 @@ function onSurfacePointerDown(ev, i) {
   const entry = state.pages[i];
   if (!rec || !entry) return;
   const target = ev.target instanceof Element ? ev.target : null;
-  if (target?.closest(".text-editor")) return;
+  if (target?.closest(".text-editor") || target?.closest(".form-field")) return;
   const p = normPoint(rec, ev);
   const hit = textBoxInteractionAt(rec, entry, p);
   if (!hit) {
@@ -1592,7 +1834,7 @@ function onSurfaceDoubleClick(ev, i) {
   const entry = state.pages[i];
   if (!rec || !entry) return;
   const target = ev.target instanceof Element ? ev.target : null;
-  if (target?.closest(".text-editor")) return;
+  if (target?.closest(".text-editor") || target?.closest(".form-field")) return;
   const editIndex = editableAnnotationAt(entry, normPoint(rec, ev));
   if (editIndex < 0) return;
   ev.preventDefault();
@@ -1612,7 +1854,7 @@ function onSurfacePointerMove(ev, i) {
     return;
   }
   const target = ev.target instanceof Element ? ev.target : null;
-  if (target?.closest(".text-editor")) return;
+  if (target?.closest(".text-editor") || target?.closest(".form-field")) return;
   const p = normPoint(rec, ev);
   const hit = textBoxInteractionAt(rec, entry, p);
   rec.surface.classList.toggle("text-box-move", hit?.kind === "move");
@@ -1907,6 +2149,7 @@ function snapshot() {
       intrinsic: p.intrinsic,
       crop: p.crop || null,
       annos: p.annos,
+      fields: p.fields || [],
     })),
     bookmarks: [...state.docs].map(([id, doc]) => [id, doc.bookmarks || []]),
   });
@@ -1924,6 +2167,7 @@ async function restoreSnapshot(json) {
   const storedPages = Array.isArray(parsed) ? parsed : parsed.pages;
   const pages = storedPages.map((p) => ({
     ...p,
+    fields: Array.isArray(p.fields) ? p.fields : [],
     searchHits: [],
     dim: null,
   }));
@@ -2132,6 +2376,7 @@ async function insertBlankPage() {
       rotation: 0,
       intrinsic: null,
       annos: [],
+      fields: [],
       crop: null,
       searchHits: [],
       dim: null,
@@ -2208,7 +2453,55 @@ async function buildPayload(pages, extras = true, includeSecurity = true) {
     return spec;
   });
   const annotations = [];
+  const forms = [];
   pages.forEach((entry, index) => {
+    for (const field of entry.fields || []) {
+      if (!field.rect) continue;
+      const item = {
+        page: index,
+        kind: field.kind,
+        name: field.name || `Field ${forms.length + 1}`,
+        rect: field.rect,
+        read_only: !!field.readOnly,
+        required: !!field.required,
+        font_size: Number(field.fontSize) || 12,
+        font: normalizeTextFont(field.font),
+        color: hexToRgb01(field.color || "#1f2937").map((value) => Number(value.toFixed(4))),
+        alignment: Number(field.alignment) || 0,
+      };
+      if (field.background) {
+        item.background = hexToRgb01(field.background).map((value) => Number(value.toFixed(4)));
+      }
+      if (field.borderColor) {
+        item.border_color = hexToRgb01(field.borderColor).map((value) => Number(value.toFixed(4)));
+        item.border_width = Number(field.borderWidth) || 1;
+      }
+      if (field.tooltip) item.tooltip = field.tooltip;
+      if (field.kind === "text") {
+        item.value = field.value || "";
+        item.default_value = field.defaultValue || "";
+        item.multiline = !!field.multiline;
+        item.max_len = field.maxLen || null;
+        item.comb = !!field.comb;
+      } else if (field.kind === "choice") {
+        item.value = field.value || "";
+        item.values = field.values || [];
+        item.default_value = field.defaultValue || "";
+        item.default_values = field.defaultValues || [];
+        item.options = (field.options || []).map((option) => ({
+          display: option.display,
+          export: option.export,
+        }));
+        item.combo = !!field.combo;
+        item.multi_select = !!field.multiSelect;
+      } else {
+        item.checked = !!field.checked;
+        item.export_value = field.exportValue || "Yes";
+        item.radio_group = field.radioGroup || null;
+      }
+      forms.push(item);
+    }
+
     for (const a of entry.annos) {
       const item = {
         page: index,
@@ -2234,6 +2527,7 @@ async function buildPayload(pages, extras = true, includeSecurity = true) {
     docs,
     pages: pageSpecs,
     annotations,
+    forms,
     flatten: !!s.flatten,
     remove_metadata: !!s.removeMetadata,
   };
@@ -2421,18 +2715,141 @@ function pdfQuadsNormalized(viewport, quads) {
   return out;
 }
 
-async function annotationsFromPdfPage(page) {
+function optionalPdfColor(color) {
+  if (!color) return null;
+  const values = Array.from(color).slice(0, 3).map(Number);
+  if (values.length < 3 || values.some((value) => !Number.isFinite(value))) return null;
+  return pdfColorHex(values, "#000000");
+}
+
+function formOption(option) {
+  if (Array.isArray(option)) {
+    const exportValue = String(option[0] ?? "");
+    return { export: exportValue, display: String(option[1] ?? exportValue) };
+  }
+  const exportValue = String(option?.exportValue ?? option?.export ?? option?.value ?? "");
+  return {
+    export: exportValue,
+    display: String(option?.displayValue ?? option?.display ?? exportValue),
+  };
+}
+
+function formFieldValueList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item));
+  if (value === undefined || value === null || value === "") return [];
+  return [String(value)];
+}
+
+function formButtonChecked(value, exportValue) {
+  if (value === true) return true;
+  if (value === false || value === undefined || value === null) return false;
+  const selected = String(value);
+  if (!selected || selected === "Off") return false;
+  return selected === exportValue || selected === "On" || selected === "Yes" || selected === "1";
+}
+
+function formFieldFromAnnotation(annotation, viewport, pageIndex, serial, docId) {
+  if (!annotation || annotation.hidden || annotation.noView) return null;
+  const fieldType = String(annotation.fieldType || "");
+  if (!fieldType) return null;
+  const rect = pdfRectNormalized(viewport, annotation.rect);
+  if (!rect) return null;
+
+  const appearance = annotation.defaultAppearanceData || {};
+  const fieldName = String(annotation.fieldName || "").trim() || `Field ${serial + 1}`;
+  const fontSize = Number(appearance.fontSize) > 0
+    ? normalizeTextSize(appearance.fontSize)
+    : 12;
+  const borderWidth = Math.max(0, Number(annotation.borderStyle?.width) || 0);
+  const field = {
+    id: `form-${docId}-${pageIndex}-${serial}`,
+    name: fieldName,
+    rect,
+    readOnly: !!annotation.readOnly,
+    required: !!annotation.required,
+    tooltip: String(annotation.alternativeText || "").trim() || undefined,
+    fontSize,
+    font: normalizeTextFont(appearance.fontName ?? annotation.fontName),
+    color: pdfColorHex(annotation.color ?? appearance.fontColor, "#1f2937"),
+    background: optionalPdfColor(annotation.backgroundColor),
+    borderColor: optionalPdfColor(annotation.borderColor),
+    borderWidth,
+    alignment: [0, 1, 2].includes(Number(annotation.textAlignment))
+      ? Number(annotation.textAlignment)
+      : 0,
+  };
+
+  if (fieldType === "Tx" || fieldType === "Sig") {
+    const values = formFieldValueList(annotation.fieldValue);
+    const defaults = formFieldValueList(annotation.defaultFieldValue);
+    return {
+      ...field,
+      kind: "text",
+      signature: fieldType === "Sig",
+      value: values.join("\n"),
+      defaultValue: defaults.join("\n"),
+      multiline: !!annotation.multiLine,
+      maxLen: Number(annotation.maxLen) > 0 ? Number(annotation.maxLen) : null,
+      comb: !!annotation.comb,
+    };
+  }
+
+  if (fieldType === "Ch") {
+    const values = formFieldValueList(annotation.fieldValue);
+    const defaults = formFieldValueList(annotation.defaultFieldValue);
+    const options = (annotation.options || []).map(formOption).filter((option) => option.export);
+    return {
+      ...field,
+      kind: "choice",
+      value: values[0] || "",
+      values,
+      defaultValue: defaults[0] || "",
+      defaultValues: defaults,
+      options,
+      combo: !!annotation.combo,
+      multiSelect: !!annotation.multiSelect,
+    };
+  }
+
+  if (fieldType === "Btn") {
+    if (annotation.pushButton) return null;
+    const exportValue = String(annotation.buttonValue || "Yes");
+    return {
+      ...field,
+      kind: annotation.radioButton ? "radio" : "checkbox",
+      checked: formButtonChecked(annotation.fieldValue, exportValue),
+      exportValue,
+      radioGroup: annotation.radioButton ? `${docId}:${fieldName}` : undefined,
+    };
+  }
+
+  return null;
+}
+
+async function annotationsFromPdfPage(page, docId, pageIndex) {
   let source;
   try {
     source = await page.getAnnotations({ intent: "display" });
   } catch {
-    return [];
+    return { annos: [], fields: [] };
   }
   const viewport = page.getViewport({ scale: 1, rotation: page.rotate || 0 });
   const out = [];
+  const fields = [];
   for (const annotation of source || []) {
     const subtype = String(annotation.subtype || "").toLowerCase();
-    if (subtype === "popup" || subtype === "link" || subtype === "widget") continue;
+    if (subtype === "widget") {
+      const field = formFieldFromAnnotation(
+        annotation,
+        viewport,
+        pageIndex,
+        fields.length,
+        docId,
+      );
+      if (field) fields.push(field);
+      continue;
+    }
+    if (subtype === "popup" || subtype === "link") continue;
     const rect = pdfRectNormalized(viewport, annotation.rect);
     if (!rect) continue;
     const contents = String(annotation.contentsObj?.str ?? annotation.contents ?? "").trim();
@@ -2463,7 +2880,7 @@ async function annotationsFromPdfPage(page) {
       out.push({ kind: "square", rect, color, width: Number(annotation.borderStyle?.width) || 2 });
     }
   }
-  return out;
+  return { annos: out, fields };
 }
 
 async function openBase64Pdf(base64, name, mode = "replace", path = null) {
@@ -2480,12 +2897,14 @@ async function openBase64Pdf(base64, name, mode = "replace", path = null) {
   const entries = [];
   for (let i = 0; i < pdf.numPages; i++) {
     const page = await pdf.getPage(i + 1);
+    const extracted = await annotationsFromPdfPage(page, id, i);
     entries.push({
       docId: id,
       index: i,
       rotation: 0,
       intrinsic: page.rotate || 0,
-      annos: await annotationsFromPdfPage(page),
+      annos: extracted.annos,
+      fields: extracted.fields,
       crop: null,
       searchHits: [],
       dim: null,
@@ -2512,7 +2931,11 @@ async function openBase64Pdf(base64, name, mode = "replace", path = null) {
 
   els.empty.style.display = "none";
   await rebuild();
-  setHint(`${state.pages.length} page${state.pages.length === 1 ? "" : "s"} loaded`);
+  const fieldCount = entries.reduce((sum, entry) => sum + entry.fields.length, 0);
+  setHint(
+    `${state.pages.length} page${state.pages.length === 1 ? "" : "s"} loaded` +
+      (fieldCount ? ` - ${fieldCount} form field${fieldCount === 1 ? "" : "s"}` : ""),
+  );
 }
 
 let passwordResolve = null;
@@ -3365,10 +3788,14 @@ function applyOptions() {
 function updateStatus() {
   const total = state.pages.length;
   const annos = state.pages.reduce((sum, p) => sum + p.annos.length, 0);
+  const forms = state.pages.reduce((sum, p) => sum + (p.fields?.length || 0), 0);
   const cropped = state.pages.filter((p) => p.crop).length;
   els.statusPage.textContent = total
     ? `Page ${state.current + 1} of ${total} · ${annos} annotation${annos === 1 ? "" : "s"}${cropped ? ` · ${cropped} cropped` : ""}`
     : "No document";
+  if (forms) {
+    els.statusPage.textContent += ` / ${forms} form field${forms === 1 ? "" : "s"}`;
+  }
   els.statusTool.textContent = KIND_LABELS[state.tool] || (state.tool === "select" ? "Select" : state.tool);
   els.zoomLabel.textContent = `${Math.round(state.scale * 100)}%`;
   if (els.empty) els.empty.style.display = total ? "none" : "flex";
@@ -3402,7 +3829,11 @@ function updateStatus() {
 function setTool(tool) {
   commitOpenEditor();
   hideSelectionMenu();
-  if (tool !== "select") clearTextBoxSelection();
+  if (tool !== "select") {
+    clearTextBoxSelection();
+    const active = document.activeElement;
+    if (active instanceof Element && active.closest(".form-field")) active.blur();
+  }
   state.tool = tool;
   document.body.className = `tool-${tool}`;
   document.querySelectorAll(".tool").forEach((btn) => {
@@ -3414,6 +3845,8 @@ function setTool(tool) {
     setHint("Click a page to add text, or click an existing text box to edit it.");
   } else if (tool === "note") {
     setHint("Click a page to add a sticky note.");
+  } else if (tool === "select" && state.pages.some((entry) => entry.fields?.length)) {
+    setHint("Click a form field to fill it, or select page text.");
   }
   updateStatus();
 }
@@ -3814,7 +4247,9 @@ window.addEventListener("keydown", (ev) => {
   const typing =
     ev.target instanceof HTMLInputElement ||
     ev.target instanceof HTMLTextAreaElement ||
-    ev.target?.isContentEditable;
+    ev.target instanceof HTMLSelectElement ||
+    ev.target?.isContentEditable ||
+    (ev.target instanceof Element && !!ev.target.closest(".form-field"));
   const mod = ev.ctrlKey || ev.metaKey;
 
   if (ev.key === "Escape") {

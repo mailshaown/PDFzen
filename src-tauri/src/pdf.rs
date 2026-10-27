@@ -14,6 +14,9 @@ pub struct Payload {
     pub pages: Vec<PageSpec>,
     #[serde(default)]
     pub annotations: Vec<Anno>,
+    /// Interactive AcroForm widgets to recreate on the composed pages.
+    #[serde(default)]
+    pub forms: Vec<FormField>,
     /// Bake annotations into the page content and drop the /Annots array.
     #[serde(default)]
     pub flatten: bool,
@@ -94,6 +97,73 @@ pub struct Anno {
     /// Text shown on text stamps.
     #[serde(default)]
     pub label: Option<String>,
+}
+
+/// One widget from a fillable PDF. Widgets are rebuilt as standalone
+/// AcroForm fields so page reordering/rotation/cropping keeps working.
+#[derive(Deserialize, Clone)]
+pub struct FormField {
+    pub page: usize,
+    /// text, checkbox, radio, or choice. Signature widgets are stored as text.
+    pub kind: String,
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub values: Vec<String>,
+    #[serde(default)]
+    pub default_value: String,
+    #[serde(default)]
+    pub default_values: Vec<String>,
+    /// Normalized rect, origin top-left: [x, y, w, h].
+    #[serde(default)]
+    pub rect: Option<[f64; 4]>,
+    #[serde(default)]
+    pub read_only: bool,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub multiline: bool,
+    #[serde(default)]
+    pub max_len: Option<u32>,
+    #[serde(default)]
+    pub comb: bool,
+    /// 0 = left, 1 = center, 2 = right.
+    #[serde(default)]
+    pub alignment: u8,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    #[serde(default = "default_font")]
+    pub font: String,
+    #[serde(default)]
+    pub color: Vec<f64>,
+    #[serde(default)]
+    pub background: Vec<f64>,
+    #[serde(default)]
+    pub border_color: Vec<f64>,
+    #[serde(default)]
+    pub border_width: f64,
+    #[serde(default)]
+    pub tooltip: Option<String>,
+    #[serde(default)]
+    pub options: Vec<FormOption>,
+    #[serde(default)]
+    pub combo: bool,
+    #[serde(default)]
+    pub multi_select: bool,
+    #[serde(default)]
+    pub checked: bool,
+    #[serde(default)]
+    pub export_value: Option<String>,
+    /// Stable grouping key for radio buttons; not written to the PDF.
+    #[serde(default)]
+    pub radio_group: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct FormOption {
+    pub display: String,
+    pub export: String,
 }
 
 fn default_opacity() -> f64 {
@@ -305,8 +375,8 @@ struct AnnotationFonts {
 }
 
 impl AnnotationFonts {
-    fn for_annotation(self, anno: &Anno) -> (&'static str, ObjectId) {
-        let font = anno.font.trim().to_ascii_lowercase();
+    fn for_font(self, name: &str) -> (&'static str, ObjectId) {
+        let font = name.trim().to_ascii_lowercase();
         if font.contains("sans") {
             ("Helv", self.helvetica)
         } else if font.contains("times") || font.contains("serif") || font == "tiro" {
@@ -316,6 +386,10 @@ impl AnnotationFonts {
         } else {
             ("Helv", self.helvetica)
         }
+    }
+
+    fn for_annotation(self, anno: &Anno) -> (&'static str, ObjectId) {
+        self.for_font(&anno.font)
     }
 }
 
@@ -329,10 +403,708 @@ fn escape_pdf_text(text: &str) -> String {
             '\n' => {}
             '\r' => {}
             c if c.is_ascii() => out.push(c),
+            // WinAnsi can represent the first 256 code points. Octal escapes
+            // keep the content stream ASCII while preserving accented text.
+            c if (c as u32) <= 0xFF => out.push_str(&format!("\\{:03o}", c as u32)),
             _ => out.push('?'),
         }
     }
     out
+}
+
+fn form_color(values: &[f64], fallback: (f64, f64, f64)) -> (f64, f64, f64) {
+    if values.len() < 3 {
+        return fallback;
+    }
+    (
+        values[0].clamp(0.0, 1.0),
+        values[1].clamp(0.0, 1.0),
+        values[2].clamp(0.0, 1.0),
+    )
+}
+
+fn optional_form_color(values: &[f64]) -> Option<(f64, f64, f64)> {
+    if values.len() < 3 {
+        None
+    } else {
+        Some((
+            values[0].clamp(0.0, 1.0),
+            values[1].clamp(0.0, 1.0),
+            values[2].clamp(0.0, 1.0),
+        ))
+    }
+}
+
+fn form_project_rect(raw: [f64; 4], page_w: f64, page_h: f64) -> [f64; 4] {
+    let x0 = raw[0].clamp(0.0, 1.0) * page_w;
+    let x1 = (raw[0] + raw[2].abs().max(0.001)).clamp(0.0, 1.0) * page_w;
+    let y0 = (1.0 - raw[1].clamp(0.0, 1.0)) * page_h;
+    let y1 = (1.0 - (raw[1] + raw[3].abs().max(0.001)).clamp(0.0, 1.0)) * page_h;
+    [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+}
+
+fn form_state_name(raw: &str) -> String {
+    let mut out = String::new();
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() { "Yes".into() } else { out }
+}
+
+fn unique_form_state(used: &mut HashMap<String, usize>, raw: &str) -> String {
+    let base = form_state_name(raw);
+    let count = used.entry(base.clone()).or_insert(0);
+    *count += 1;
+    if *count == 1 {
+        base
+    } else {
+        format!("{base}_{}", *count)
+    }
+}
+
+fn unique_form_name(used: &mut HashMap<String, usize>, raw: &str) -> String {
+    let base = raw.trim();
+    let base = if base.is_empty() { "Field" } else { base };
+    let count = used.entry(base.to_string()).or_insert(0);
+    *count += 1;
+    if *count == 1 {
+        base.to_string()
+    } else {
+        format!("{base}_{}", *count)
+    }
+}
+
+fn form_text_value(field: &FormField) -> String {
+    if field.kind == "choice" {
+        let values = if !field.values.is_empty() {
+            field.values.clone()
+        } else if field.value.is_empty() {
+            Vec::new()
+        } else {
+            vec![field.value.clone()]
+        };
+        let mut labels = Vec::with_capacity(values.len());
+        for value in values {
+            let label = field
+                .options
+                .iter()
+                .find(|option| option.export == value)
+                .map(|option| option.display.clone())
+                .unwrap_or(value);
+            labels.push(label);
+        }
+        labels.join(", ")
+    } else {
+        field.value.replace(['\r', '\n'], " ")
+    }
+}
+
+fn field_text_lines(field: &FormField, max_chars: usize) -> Vec<String> {
+    let raw = if field.kind == "choice" {
+        form_text_value(field)
+    } else {
+        field.value.clone()
+    };
+    let mut lines = Vec::new();
+    for paragraph in raw.replace('\r', "").split('\n') {
+        if !field.multiline {
+            lines.push(paragraph.to_string());
+            continue;
+        }
+        if paragraph.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut remaining = paragraph.to_string();
+        while remaining.chars().count() > max_chars {
+            let mut split = 0usize;
+            let mut last_space = None;
+            for (idx, ch) in remaining.char_indices() {
+                if idx >= max_chars {
+                    break;
+                }
+                if ch == ' ' {
+                    last_space = Some(idx);
+                }
+                split = idx + ch.len_utf8();
+            }
+            let at = last_space.filter(|idx| *idx > 0).unwrap_or(split);
+            let (line, rest) = remaining.split_at(at);
+            lines.push(line.trim_end().to_string());
+            remaining = rest.trim_start().to_string();
+        }
+        lines.push(remaining);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn form_background_content(
+    width: f64,
+    height: f64,
+    background: Option<(f64, f64, f64)>,
+    border: Option<(f64, f64, f64)>,
+    border_width: f64,
+) -> String {
+    let mut content = String::new();
+    if let Some((r, g, b)) = background {
+        content.push_str(&format!(
+            "q {r:.4} {g:.4} {b:.4} rg 0 0 {width:.3} {height:.3} re f Q "
+        ));
+    }
+    if let Some((r, g, b)) = border {
+        let lw = border_width.clamp(0.5, 4.0);
+        let inset = lw / 2.0;
+        content.push_str(&format!(
+            "q {r:.4} {g:.4} {b:.4} RG {lw:.3} w {x:.3} {y:.3} {w:.3} {h:.3} re S Q ",
+            x = inset,
+            y = inset,
+            w = (width - lw).max(0.1),
+            h = (height - lw).max(0.1),
+        ));
+    }
+    content
+}
+
+fn circle_path(cx: f64, cy: f64, radius: f64) -> String {
+    let k = radius * 0.552_284_749_8;
+    format!(
+        "{x0:.3} {y:.3} m {x1:.3} {y1:.3} {x2:.3} {y2:.3} {x:.3} {y2:.3} c \
+         {x3:.3} {y2:.3} {x4:.3} {y1:.3} {x4:.3} {y:.3} c \
+         {x4:.3} {y3:.3} {x3:.3} {y4:.3} {x:.3} {y4:.3} c \
+         {x2:.3} {y4:.3} {x1:.3} {y3:.3} {x0:.3} {y:.3} c",
+        x0 = cx + radius,
+        x1 = cx + radius,
+        x2 = cx + k,
+        x3 = cx - k,
+        x4 = cx - radius,
+        y = cy,
+        y1 = cy + k,
+        y2 = cy + radius,
+        y3 = cy - k,
+        y4 = cy - radius,
+        x = cx,
+    )
+}
+
+fn button_appearance_content(width: f64, height: f64, field: &FormField, checked: bool) -> String {
+    let background = optional_form_color(&field.background);
+    let border = optional_form_color(&field.border_color);
+    let mut content = form_background_content(
+        width,
+        height,
+        background,
+        border,
+        if field.border_width > 0.0 {
+            field.border_width
+        } else {
+            1.0
+        },
+    );
+    if !checked {
+        return content;
+    }
+    let color = form_color(&field.color, (0.1, 0.2, 0.45));
+    let size = width.min(height).max(1.0);
+    let lw = (size * 0.12).clamp(1.0, 3.0);
+    if field.kind == "radio" {
+        content.push_str(&format!(
+            "q {r:.4} {g:.4} {b:.4} rg {} f Q",
+            circle_path(width / 2.0, height / 2.0, size * 0.23),
+            r = color.0,
+            g = color.1,
+            b = color.2,
+        ));
+    } else {
+        let x0 = width * 0.18;
+        let y0 = height * 0.50;
+        let x1 = width * 0.42;
+        let y1 = height * 0.20;
+        let x2 = width * 0.84;
+        let y2 = height * 0.80;
+        content.push_str(&format!(
+            "q {r:.4} {g:.4} {b:.4} RG {lw:.3} w 1 J {x0:.3} {y0:.3} m {x1:.3} {y1:.3} l {x2:.3} {y2:.3} l S Q",
+            r = color.0,
+            g = color.1,
+            b = color.2,
+        ));
+    }
+    content
+}
+
+fn form_text_appearance(
+    out: &mut Document,
+    field: &FormField,
+    width: f64,
+    height: f64,
+    fonts: AnnotationFonts,
+) -> ObjectId {
+    let (font_key, font_id) = fonts.for_font(&field.font);
+    let (r, g, b) = form_color(&field.color, (0.1, 0.1, 0.1));
+    let background = optional_form_color(&field.background);
+    let border = optional_form_color(&field.border_color);
+    let size = field.font_size.clamp(4.0, 96.0);
+    let pad = (size * 0.18).clamp(1.0, 4.0);
+    let inner_w = (width - pad * 2.0).max(1.0);
+    let inner_h = (height - pad * 2.0).max(1.0);
+    let mut content =
+        form_background_content(width, height, background, border, field.border_width);
+    let text = form_text_value(field);
+    if !text.is_empty() {
+        if field.comb && field.max_len.unwrap_or(0) > 0 {
+            let cells = field.max_len.unwrap_or(1).max(1) as f64;
+            let cell_w = width / cells;
+            let font_size = size.min(cell_w * 0.68).min(inner_h * 0.75).max(4.0);
+            let base_y = (height - font_size * 0.72) / 2.0;
+            content.push_str("q 0.45 0.45 0.45 RG 0.35 w ");
+            for i in 1..cells as usize {
+                let x = cell_w * i as f64;
+                content.push_str(&format!("{x:.3} 1 m {x:.3} {} l S ", height - 1.0));
+            }
+            content.push_str("Q ");
+            content.push_str(&format!(
+                "q 0 0 {width:.3} {height:.3} re W n BT /{font_key} {font_size:.3} Tf {r:.4} {g:.4} {b:.4} rg "
+            ));
+            for (i, ch) in text
+                .chars()
+                .take(field.max_len.unwrap_or(0) as usize)
+                .enumerate()
+            {
+                let ch_width = font_size * 0.52;
+                let x = cell_w * i as f64 + (cell_w - ch_width) / 2.0;
+                content.push_str(&format!(
+                    "1 0 0 1 {x:.3} {base_y:.3} Tm ({t}) Tj ",
+                    t = escape_pdf_text(&ch.to_string())
+                ));
+            }
+            content.push_str("ET Q");
+        } else {
+            let max_chars = ((inner_w / (size * 0.52)).floor() as usize).max(1);
+            let lines = field_text_lines(field, max_chars);
+            let line_h = size * 1.2;
+            let visible = ((inner_h / line_h).floor() as usize).max(1);
+            let start = if lines.len() > visible {
+                lines.len() - visible
+            } else {
+                0
+            };
+            let base_y = if field.multiline {
+                height - pad - size * 0.8
+            } else {
+                (height - size * 0.72) / 2.0
+            };
+            content.push_str(&format!(
+                "q 0 0 {width:.3} {height:.3} re W n BT /{font_key} {size:.3} Tf {r:.4} {g:.4} {b:.4} rg "
+            ));
+            for (index, line) in lines.iter().skip(start).enumerate() {
+                let text_w = line.chars().count() as f64 * size * 0.52;
+                let x = match field.alignment {
+                    1 => (width - text_w) / 2.0,
+                    2 => width - pad - text_w,
+                    _ => pad,
+                };
+                let y = base_y - index as f64 * line_h;
+                content.push_str(&format!(
+                    "1 0 0 1 {x:.3} {y:.3} Tm ({t}) Tj ",
+                    t = escape_pdf_text(line)
+                ));
+            }
+            content.push_str("ET Q");
+        }
+    }
+    appearance(
+        out,
+        [0.0, 0.0, width, height],
+        content,
+        Some(font_resources(font_key, font_id)),
+    )
+}
+
+fn form_widget_rect(field: &FormField, page_w: f64, page_h: f64) -> [f64; 4] {
+    form_project_rect(
+        field.rect.unwrap_or([0.05, 0.05, 0.2, 0.04]),
+        page_w,
+        page_h,
+    )
+}
+
+fn form_widget_dictionary(
+    field: &FormField,
+    name: &str,
+    rect: [f64; 4],
+    page_id: ObjectId,
+    appearance_id: ObjectId,
+    fonts: AnnotationFonts,
+) -> Dictionary {
+    let (font_key, _) = fonts.for_font(&field.font);
+    let (r, g, b) = form_color(&field.color, (0.1, 0.1, 0.1));
+    let size = field.font_size.clamp(4.0, 96.0);
+    let da = format!("/{font_key} {size:.3} Tf {r:.4} {g:.4} {b:.4} rg");
+    let mut dict = dictionary! {
+        "Type" => "Annot",
+        "Subtype" => "Widget",
+        "FT" => "Tx",
+        "Rect" => Object::Array(rect.iter().map(|value| Object::Real(*value as f32)).collect()),
+        "T" => pdf_string(name),
+        "F" => Object::Integer(4),
+        "P" => Object::Reference(page_id),
+        "DA" => Object::string_literal(da.into_bytes()),
+        "Q" => Object::Integer(field.alignment.min(2) as i64),
+        "V" => pdf_string(&field.value),
+        "DV" => pdf_string(&field.default_value),
+        "AP" => dictionary! { "N" => Object::Reference(appearance_id) },
+    };
+    let mut flags = 0i64;
+    if field.read_only {
+        flags |= 1;
+    }
+    if field.required {
+        flags |= 2;
+    }
+    if field.multiline {
+        flags |= 1 << 12;
+    }
+    if field.comb {
+        flags |= 1 << 24;
+    }
+    if flags != 0 {
+        dict.set("Ff", Object::Integer(flags));
+    }
+    if let Some(max_len) = field.max_len.filter(|value| *value > 0) {
+        dict.set("MaxLen", Object::Integer(max_len as i64));
+    }
+    if let Some(tooltip) = field
+        .tooltip
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        dict.set("TU", pdf_string(tooltip.trim()));
+    }
+    let background = optional_form_color(&field.background);
+    let border = optional_form_color(&field.border_color);
+    if background.is_some() || border.is_some() {
+        let mut mk = Dictionary::new();
+        if let Some((r, g, b)) = background {
+            mk.set(
+                "BG",
+                Object::Array(vec![
+                    Object::Real(r as f32),
+                    Object::Real(g as f32),
+                    Object::Real(b as f32),
+                ]),
+            );
+        }
+        if let Some((r, g, b)) = border {
+            mk.set(
+                "BC",
+                Object::Array(vec![
+                    Object::Real(r as f32),
+                    Object::Real(g as f32),
+                    Object::Real(b as f32),
+                ]),
+            );
+        }
+        dict.set("MK", Object::Dictionary(mk));
+    }
+    dict
+}
+
+fn form_choice_widget_dictionary(
+    field: &FormField,
+    name: &str,
+    rect: [f64; 4],
+    page_id: ObjectId,
+    appearance_id: ObjectId,
+    fonts: AnnotationFonts,
+) -> Dictionary {
+    let mut dict = form_widget_dictionary(field, name, rect, page_id, appearance_id, fonts);
+    dict.set("FT", Object::Name(b"Ch".to_vec()));
+    let options: Vec<Object> = field
+        .options
+        .iter()
+        .map(|option| {
+            if option.display == option.export {
+                pdf_string(&option.export)
+            } else {
+                Object::Array(vec![
+                    pdf_string(&option.export),
+                    pdf_string(&option.display),
+                ])
+            }
+        })
+        .collect();
+    if !options.is_empty() {
+        dict.set("Opt", Object::Array(options));
+    }
+    let values = if !field.values.is_empty() {
+        field.values.clone()
+    } else if field.value.is_empty() {
+        Vec::new()
+    } else {
+        vec![field.value.clone()]
+    };
+    if values.len() > 1 {
+        dict.set(
+            "V",
+            Object::Array(values.iter().map(|value| pdf_string(value)).collect()),
+        );
+    } else if let Some(value) = values.first() {
+        dict.set("V", pdf_string(value));
+    } else {
+        dict.set("V", pdf_string(""));
+    }
+    let mut flags = if field.read_only { 1 } else { 0 };
+    if field.required {
+        flags |= 2;
+    }
+    if field.combo {
+        flags |= 1 << 17;
+    }
+    if field.multi_select {
+        flags |= 1 << 21;
+    }
+    if flags != 0 {
+        dict.set("Ff", Object::Integer(flags));
+    }
+    dict
+}
+
+fn add_form_fields(
+    out: &mut Document,
+    forms: &[FormField],
+    page_ids: &[ObjectId],
+    page_sizes: &[(f64, f64)],
+    fonts: AnnotationFonts,
+    catalog_id: ObjectId,
+) {
+    if forms.is_empty() || page_ids.is_empty() {
+        return;
+    }
+    let mut roots: Vec<Object> = Vec::new();
+    let mut page_annots: Vec<Vec<Object>> = vec![Vec::new(); page_ids.len()];
+    let mut used_names: HashMap<String, usize> = HashMap::new();
+
+    let mut radio_groups: Vec<(String, Vec<&FormField>)> = Vec::new();
+    for field in forms.iter().filter(|field| {
+        field.kind == "radio" && field.page < page_ids.len() && field.rect.is_some()
+    }) {
+        let key = field
+            .radio_group
+            .as_deref()
+            .unwrap_or(&field.name)
+            .to_string();
+        if let Some((_, group)) = radio_groups.iter_mut().find(|(name, _)| *name == key) {
+            group.push(field);
+        } else {
+            radio_groups.push((key, vec![field]));
+        }
+    }
+
+    for (_, group) in radio_groups {
+        let first = group[0];
+        let name = unique_form_name(&mut used_names, &first.name);
+        let mut flags = 1i64 << 15;
+        if first.read_only {
+            flags |= 1;
+        }
+        if first.required {
+            flags |= 2;
+        }
+        let parent_id = out.new_object_id();
+        let mut kids = Vec::new();
+        let mut used_states = HashMap::new();
+        let mut selected_state = "Off".to_string();
+        for field in group {
+            let (page_w, page_h) = page_sizes[field.page];
+            let rect = form_widget_rect(field, page_w, page_h);
+            let width = (rect[2] - rect[0]).max(1.0);
+            let height = (rect[3] - rect[1]).max(1.0);
+            let state = unique_form_state(
+                &mut used_states,
+                field.export_value.as_deref().unwrap_or("Yes"),
+            );
+            let off_id = appearance(
+                out,
+                [0.0, 0.0, width, height],
+                button_appearance_content(width, height, field, false),
+                None,
+            );
+            let on_id = appearance(
+                out,
+                [0.0, 0.0, width, height],
+                button_appearance_content(width, height, field, true),
+                None,
+            );
+            let mut states = Dictionary::new();
+            states.set("Off", Object::Reference(off_id));
+            states.set(state.as_bytes().to_vec(), Object::Reference(on_id));
+            let mut widget = dictionary! {
+                "Type" => "Annot",
+                "Subtype" => "Widget",
+                "Rect" => Object::Array(rect.iter().map(|value| Object::Real(*value as f32)).collect()),
+                "F" => Object::Integer(4),
+                "P" => Object::Reference(page_ids[field.page]),
+                "Parent" => Object::Reference(parent_id),
+                "AS" => Object::Name(if field.checked { state.clone() } else { "Off".into() }.into_bytes()),
+                "AP" => dictionary! { "N" => Object::Dictionary(states) },
+            };
+            if let Some(tooltip) = field
+                .tooltip
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                widget.set("TU", pdf_string(tooltip.trim()));
+            }
+            if field.checked {
+                selected_state = state;
+            }
+            let widget_id = out.add_object(Object::Dictionary(widget));
+            kids.push(Object::Reference(widget_id));
+            page_annots[field.page].push(Object::Reference(widget_id));
+        }
+        if kids.is_empty() {
+            continue;
+        }
+        let mut parent = dictionary! {
+            "FT" => "Btn",
+            "T" => pdf_string(&name),
+            "Ff" => Object::Integer(flags),
+            "V" => Object::Name(selected_state.clone().into_bytes()),
+            "DV" => Object::Name(selected_state.into_bytes()),
+            "Kids" => Object::Array(kids),
+        };
+        if let Some(tooltip) = first
+            .tooltip
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            parent.set("TU", pdf_string(tooltip.trim()));
+        }
+        out.objects.insert(parent_id, Object::Dictionary(parent));
+        roots.push(Object::Reference(parent_id));
+    }
+
+    for field in forms.iter().filter(|field| {
+        field.kind != "radio" && field.page < page_ids.len() && field.rect.is_some()
+    }) {
+        let (page_w, page_h) = page_sizes[field.page];
+        let rect = form_widget_rect(field, page_w, page_h);
+        let width = (rect[2] - rect[0]).max(1.0);
+        let height = (rect[3] - rect[1]).max(1.0);
+        let name = unique_form_name(&mut used_names, &field.name);
+        if field.kind == "checkbox" {
+            let state = unique_form_state(
+                &mut HashMap::new(),
+                field.export_value.as_deref().unwrap_or("Yes"),
+            );
+            let off_id = appearance(
+                out,
+                [0.0, 0.0, width, height],
+                button_appearance_content(width, height, field, false),
+                None,
+            );
+            let on_id = appearance(
+                out,
+                [0.0, 0.0, width, height],
+                button_appearance_content(width, height, field, true),
+                None,
+            );
+            let mut states = Dictionary::new();
+            states.set("Off", Object::Reference(off_id));
+            states.set(state.as_bytes().to_vec(), Object::Reference(on_id));
+            let mut flags = 0i64;
+            if field.read_only {
+                flags |= 1;
+            }
+            if field.required {
+                flags |= 2;
+            }
+            let mut widget = dictionary! {
+                "Type" => "Annot",
+                "Subtype" => "Widget",
+                "FT" => "Btn",
+                "Rect" => Object::Array(rect.iter().map(|value| Object::Real(*value as f32)).collect()),
+                "T" => pdf_string(&name),
+                "F" => Object::Integer(4),
+                "P" => Object::Reference(page_ids[field.page]),
+                "V" => Object::Name(if field.checked { state.clone() } else { "Off".into() }.into_bytes()),
+                "AS" => Object::Name(if field.checked { state } else { "Off".into() }.into_bytes()),
+                "Ff" => Object::Integer(flags),
+                "AP" => dictionary! { "N" => Object::Dictionary(states) },
+            };
+            if let Some(tooltip) = field
+                .tooltip
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                widget.set("TU", pdf_string(tooltip.trim()));
+            }
+            let widget_id = out.add_object(Object::Dictionary(widget));
+            page_annots[field.page].push(Object::Reference(widget_id));
+            roots.push(Object::Reference(widget_id));
+            continue;
+        }
+        let appearance_id = form_text_appearance(out, field, width, height, fonts);
+        let widget = if field.kind == "choice" {
+            form_choice_widget_dictionary(
+                field,
+                &name,
+                rect,
+                page_ids[field.page],
+                appearance_id,
+                fonts,
+            )
+        } else {
+            form_widget_dictionary(
+                field,
+                &name,
+                rect,
+                page_ids[field.page],
+                appearance_id,
+                fonts,
+            )
+        };
+        let widget_id = out.add_object(Object::Dictionary(widget));
+        page_annots[field.page].push(Object::Reference(widget_id));
+        roots.push(Object::Reference(widget_id));
+    }
+
+    for (index, annots) in page_annots.into_iter().enumerate() {
+        if annots.is_empty() {
+            continue;
+        }
+        if let Ok(page) = out.get_dictionary_mut(page_ids[index]) {
+            let mut current = match page.get(b"Annots") {
+                Ok(Object::Array(items)) => items.clone(),
+                _ => Vec::new(),
+            };
+            current.extend(annots);
+            page.set("Annots", Object::Array(current));
+        }
+    }
+
+    if roots.is_empty() {
+        return;
+    }
+    let mut fonts_dict = Dictionary::new();
+    fonts_dict.set("Helv", Object::Reference(fonts.helvetica));
+    fonts_dict.set("TiRo", Object::Reference(fonts.times));
+    fonts_dict.set("Cour", Object::Reference(fonts.courier));
+    let acro_id = out.add_object(dictionary! {
+        "Fields" => Object::Array(roots),
+        "DA" => Object::string_literal(b"/Helv 0 Tf 0 g".to_vec()),
+        "DR" => dictionary! { "Font" => Object::Dictionary(fonts_dict) },
+        "NeedAppearances" => Object::Boolean(false),
+    });
+    if let Some(Object::Dictionary(catalog)) = out.objects.get_mut(&catalog_id) {
+        catalog.set("AcroForm", Object::Reference(acro_id));
+    }
 }
 
 fn jpeg_size(data: &[u8]) -> Option<(u32, u32)> {
@@ -690,9 +1462,12 @@ fn annotation_object(
             let lead = font_size * 1.2;
             let mut content = format!("q BT /{font_key} {font_size} Tf {r} {g} {b} rg ");
             for (i, line) in text.lines().enumerate() {
-                let y = height - font_size - (i as f64 * lead);
+                // Position the first baseline so the glyph top line sits at
+                // the top edge of the annotation box, matching the in-page
+                // editor (1.2 line height, 0.1 em half-leading).
+                let y = height - font_size * 0.8 - (i as f64 * lead);
                 content.push_str(&format!(
-                    "1 0 0 1 2 {y} Tm ({t}) Tj ",
+                    "1 0 0 1 0 {y} Tm ({t}) Tj ",
                     y = y,
                     t = escape_pdf_text(line)
                 ));
@@ -1045,6 +1820,7 @@ pub fn build(payload: Payload) -> Result<Vec<u8>, String> {
     let total_pages = payload.pages.len();
     let mut kids: Vec<Object> = Vec::new();
     let mut page_ids: Vec<ObjectId> = Vec::new();
+    let mut page_sizes: Vec<(f64, f64)> = Vec::new();
 
     for (page_no, spec) in payload.pages.iter().enumerate() {
         let src = sources
@@ -1246,6 +2022,7 @@ pub fn build(payload: Payload) -> Result<Vec<u8>, String> {
         let new_page_id = out.add_object(Object::Dictionary(dict));
         kids.push(Object::Reference(new_page_id));
         page_ids.push(new_page_id);
+        page_sizes.push((new_w, new_h));
     }
 
     let count = kids.len() as i64;
@@ -1263,6 +2040,15 @@ pub fn build(payload: Payload) -> Result<Vec<u8>, String> {
             "Type" => "Catalog",
             "Pages" => Object::Reference(pages_id),
         }),
+    );
+
+    add_form_fields(
+        &mut out,
+        &payload.forms,
+        &page_ids,
+        &page_sizes,
+        annotation_fonts,
+        catalog_id,
     );
 
     let bookmarks: Vec<&BookmarkInput> = payload
@@ -1725,6 +2511,7 @@ mod tests {
                 },
             ],
             annotations,
+            forms: vec![],
             flatten: false,
             remove_metadata: false,
             info: None,
@@ -1750,6 +2537,38 @@ mod tests {
             font: "helvetica".into(),
             image: None,
             label: None,
+        }
+    }
+
+    fn form_field(kind: &str, name: &str, page: usize, rect: [f64; 4]) -> FormField {
+        FormField {
+            page,
+            kind: kind.into(),
+            name: name.into(),
+            value: String::new(),
+            values: Vec::new(),
+            default_value: String::new(),
+            default_values: Vec::new(),
+            rect: Some(rect),
+            read_only: false,
+            required: false,
+            multiline: false,
+            max_len: None,
+            comb: false,
+            alignment: 0,
+            font_size: 12.0,
+            font: "helvetica".into(),
+            color: vec![0.1, 0.1, 0.1],
+            background: Vec::new(),
+            border_color: Vec::new(),
+            border_width: 0.0,
+            tooltip: None,
+            options: Vec::new(),
+            combo: false,
+            multi_select: false,
+            checked: false,
+            export_value: None,
+            radio_group: None,
         }
     }
 
@@ -1977,6 +2796,131 @@ mod tests {
     }
 
     #[test]
+    fn writes_interactive_acroform_fields() {
+        let mut text = form_field("text", "full_name", 0, [0.1, 0.1, 0.3, 0.05]);
+        text.value = "Ada Lovelace".into();
+        text.background = vec![0.95, 0.95, 0.95];
+        text.border_color = vec![0.2, 0.3, 0.8];
+        text.border_width = 1.0;
+        text.max_len = Some(40);
+        text.font = "times".into();
+
+        let mut check = form_field("checkbox", "agree", 0, [0.1, 0.2, 0.03, 0.03]);
+        check.checked = true;
+        check.export_value = Some("Yes".into());
+
+        let mut radio_a = form_field("radio", "color", 0, [0.5, 0.1, 0.03, 0.03]);
+        radio_a.radio_group = Some("color".into());
+        radio_a.checked = true;
+        radio_a.export_value = Some("Red".into());
+
+        let mut radio_b = form_field("radio", "color", 1, [0.5, 0.15, 0.03, 0.03]);
+        radio_b.radio_group = Some("color".into());
+        radio_b.export_value = Some("Blue".into());
+
+        let mut choice = form_field("choice", "country", 1, [0.1, 0.3, 0.35, 0.05]);
+        choice.combo = true;
+        choice.value = "ca".into();
+        choice.values = vec!["ca".into()];
+        choice.default_value = "ca".into();
+        choice.default_values = vec!["ca".into()];
+        choice.options = vec![
+            FormOption {
+                display: "Canada".into(),
+                export: "ca".into(),
+            },
+            FormOption {
+                display: "United States".into(),
+                export: "us".into(),
+            },
+        ];
+
+        let mut signature = form_field("signature", "sign_here", 0, [0.6, 0.8, 0.3, 0.06]);
+        signature.value = "Ada".into();
+
+        let mut payload = payload_for(vec![]);
+        payload.forms = vec![text, check, radio_a, radio_b, choice, signature];
+        let out = build(payload).expect("build form pdf");
+        let doc = Document::load_mem(&out).expect("reparse");
+
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let catalog = doc.get_dictionary(root).unwrap();
+        let acro = resolve_dict(&doc, catalog.get(b"AcroForm").unwrap()).expect("AcroForm");
+        assert_eq!(
+            acro.get(b"NeedAppearances").unwrap(),
+            &Object::Boolean(false)
+        );
+        assert!(acro.get(b"DA").is_ok());
+        let fields = acro.get(b"Fields").unwrap().as_array().unwrap();
+        assert_eq!(
+            fields.len(),
+            5,
+            "radio group, text, checkbox, choice, signature"
+        );
+
+        let mut by_name = HashMap::new();
+        for field in fields {
+            let dict = match field {
+                Object::Reference(id) => doc.get_dictionary(*id).unwrap().clone(),
+                Object::Dictionary(dict) => dict.clone(),
+                _ => panic!("unexpected form field object"),
+            };
+            let name =
+                String::from_utf8_lossy(dict.get(b"T").unwrap().as_str().unwrap()).to_string();
+            by_name.insert(name, dict);
+        }
+
+        let text = by_name.get("full_name").expect("text field");
+        assert_eq!(text.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
+        assert_eq!(text.get(b"V").unwrap().as_str().unwrap(), b"Ada Lovelace");
+        assert_eq!(text.get(b"MaxLen").unwrap().as_i64().unwrap(), 40);
+        assert!(text.get(b"AP").is_ok(), "text appearance stream");
+        let da = std::str::from_utf8(text.get(b"DA").unwrap().as_str().unwrap()).unwrap();
+        assert!(da.contains("/TiRo "), "serif DA: {da}");
+
+        let check = by_name.get("agree").expect("checkbox field");
+        assert_eq!(check.get(b"FT").unwrap().as_name().unwrap(), b"Btn");
+        assert_eq!(check.get(b"V").unwrap().as_name().unwrap(), b"Yes");
+        assert_eq!(check.get(b"AS").unwrap().as_name().unwrap(), b"Yes");
+        assert!(check.get(b"AP").is_ok(), "checkbox appearance stream");
+
+        let radio = by_name.get("color").expect("radio group");
+        assert_eq!(radio.get(b"FT").unwrap().as_name().unwrap(), b"Btn");
+        assert_eq!(radio.get(b"V").unwrap().as_name().unwrap(), b"Red");
+        assert_eq!(radio.get(b"Kids").unwrap().as_array().unwrap().len(), 2);
+
+        let choice = by_name.get("country").expect("choice field");
+        assert_eq!(choice.get(b"FT").unwrap().as_name().unwrap(), b"Ch");
+        assert_eq!(choice.get(b"V").unwrap().as_str().unwrap(), b"ca");
+        assert_eq!(choice.get(b"Opt").unwrap().as_array().unwrap().len(), 2);
+        assert!(choice.get(b"AP").is_ok(), "choice appearance stream");
+
+        let signature = by_name.get("sign_here").expect("signature field");
+        assert_eq!(signature.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
+        assert_eq!(signature.get(b"V").unwrap().as_str().unwrap(), b"Ada");
+
+        let pages = doc.get_pages();
+        let first = doc.get_dictionary(pages[&1]).unwrap();
+        let first_annots = first.get(b"Annots").unwrap().as_array().unwrap();
+        assert_eq!(first_annots.len(), 4, "four widgets on first page");
+        for annot in first_annots {
+            let dict = match annot {
+                Object::Reference(id) => doc.get_dictionary(*id).unwrap(),
+                Object::Dictionary(dict) => dict,
+                _ => panic!("unexpected widget object"),
+            };
+            assert_eq!(dict.get(b"Subtype").unwrap().as_name().unwrap(), b"Widget");
+            assert!(dict.get(b"P").is_ok());
+        }
+        let second = doc.get_dictionary(pages[&2]).unwrap();
+        assert_eq!(
+            second.get(b"Annots").unwrap().as_array().unwrap().len(),
+            2,
+            "radio widget and choice field on second page"
+        );
+    }
+
+    #[test]
     fn writes_multi_line_highlight_comment() {
         let annotations = vec![Anno {
             kind: "highlight".into(),
@@ -2131,6 +3075,7 @@ mod tests {
                 crop: None,
             }],
             annotations: vec![],
+            forms: vec![],
             flatten: false,
             remove_metadata: false,
             info: None,

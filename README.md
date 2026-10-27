@@ -73,6 +73,18 @@ Annotations are written to the saved PDF as genuine annotation objects
 Acrobat, Edge, Chrome and other viewers. Signature PNGs are embedded losslessly
 with an `/SMask` alpha channel; JPEG signatures use `DCTDecode`.
 
+### Fill interactive forms
+
+Interactive AcroForm fields are imported as native controls laid over the page:
+single-line and multiline text, check boxes, radio groups, combo boxes, list
+boxes and typed signature fields. Form edits participate in undo/redo, status
+counts and page operations such as rotate, crop, move, extract, split and merge.
+
+On save, the current values are written into a new AcroForm field tree with
+`/AP` appearance streams and `/NeedAppearances false`, so the values persist and
+remain editable in Acrobat, Edge, Chrome and other viewers. Flatten annotations
+does not flatten form fields; they stay fillable in the saved document.
+
 ### Organize pages
 
 Rotate, delete, move up/down, extract a page, insert a blank page, reverse the
@@ -89,7 +101,9 @@ and delete them from the Comments pane.
 - Optionally protect saved documents with an AES-256 open password and
   print/copy/modify/annotate/assemble permissions. Protected files carry a
   PDFzen tamper-evidence seal; it is not a certificate-based digital signature.
-- Flatten annotations into page content.
+- Fill interactive AcroForm widgets and save their values in an editable form
+  tree.
+- Flatten annotations into page content (form fields stay interactive).
 - Add a configurable text watermark with opacity and angle.
 - Add `n / total` page numbers (kept inside the visible crop area).
 - Remove document metadata, or set title/author/subject/keywords.
@@ -122,8 +136,8 @@ command `build_pdf`, which:
    resets `/Rotate` to 0,
 3. applies a `/CropBox` for cropped pages and positions page furniture inside it,
 4. rebuilds the page tree and catalog,
-5. adds annotation dictionaries with appearance streams, or flattens them into
-   page content, and
+5. adds AcroForm widgets with appearance streams and annotation dictionaries, or
+   flattens page annotations into page content, and
 6. adds watermarks, page numbers and document information.
 
 The result is written with `save_pdf`, either over the opened file or to a new
@@ -138,6 +152,7 @@ src/vendor/          vendored pdf.js 3.11 UMD build + worker (offline)
 src-tauri/src/pdf.rs PDF composition engine
 src-tauri/src/main.rs Tauri commands (open_pdf, save_pdf, build_pdf, …) + app
 src-tauri/examples/make_sample.rs  generates sample.pdf
+src-tauri/examples/form_fixture.rs generates an interactive AcroForm fixture
 sample.pdf           demo document with text and sample annotations
 ```
 
@@ -149,12 +164,13 @@ npm run tauri dev      # run the app
 npm run tauri build    # build the installer
 ```
 
-Rust tests and the sample document:
+Rust tests and sample documents:
 
 ```powershell
 cd src-tauri
 cargo test
 cargo run --example make_sample
+cargo run --example form_fixture -- form-fixture.pdf
 ```
 
 ### Windows notes
@@ -172,7 +188,11 @@ cargo run --example make_sample
 - **Redaction is visual only.** Black boxes cover page content but do not remove
   it from the PDF; do not rely on them for confidential data. True content
   removal and sanitisation are not implemented.
-- **No AcroForm support**: interactive form fields can be viewed but not filled.
+- **Re-created AcroForm fields** keep values and common widget types, but
+  original scripts, calculations, field hierarchy and custom appearances are not
+  preserved. XFA-only forms are not supported. Signature fields are saved as
+  typed text fields, not cryptographic signatures. Flatten annotations does not
+  flatten form fields.
 - **No OCR, Word/Office export, or in-place text/image editing**. Existing
   highlight, underline, strikeout, squiggly, sticky-note, free-text and square
   annotations are imported for viewing and editing. Imported Ink and Stamp
