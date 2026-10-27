@@ -536,7 +536,9 @@ body.resizing-sidebar * {
   min-width: 80px;
   min-height: 36px;
   border: 1px dashed var(--accent);
-  background: #fff;
+  /* Text boxes sit over the page so the user can read the document while
+     typing. Sticky-note editors keep a themed background for contrast. */
+  background: transparent;
   color: #111;
   font-family: Helvetica, Arial, sans-serif;
   line-height: 1.2;
@@ -545,6 +547,10 @@ body.resizing-sidebar * {
   padding: 2px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
+}
+
+.text-editor[data-mode="note"] {
+  background: #fff;
 }
 
 /* Floating actions for a text selection and the comment editor for a
@@ -716,7 +722,7 @@ body.resizing-sidebar * {
   background: #fff;
 }
 
-:root[data-theme="dark"] .text-editor {
+:root[data-theme="dark"] .text-editor[data-mode="note"] {
   background: rgba(20, 22, 26, 0.95);
   color: #f4f4f5;
 }

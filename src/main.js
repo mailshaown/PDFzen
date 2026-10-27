@@ -1095,6 +1095,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
 
   const ta = document.createElement("textarea");
   ta.className = "text-editor";
+  ta.dataset.mode = mode;
   ta.style.left = `${pageX * rec.w}px`;
   ta.style.top = `${pageY * rec.h}px`;
   ta.style.width = `${width}px`;
