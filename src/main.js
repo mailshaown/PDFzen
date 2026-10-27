@@ -1292,23 +1292,29 @@ function clearTextBoxSelection() {
 }
 
 function textBoxInteractionAt(rec, entry, p) {
-  const index = textBoxAt(entry, p);
-  if (index < 0) return null;
-  const anno = entry.annos[index];
-  if (selectedText && recs[selectedText.page] === rec && selectedText.index === index) {
-    const [x, y, rw, rh] = anno.rect;
-    const corners = {
-      nw: [x, y],
-      ne: [x + rw, y],
-      sw: [x, y + rh],
-      se: [x + rw, y + rh],
-    };
-    for (const [corner, [cx, cy]] of Object.entries(corners)) {
-      if (Math.abs(p.x - cx) * rec.w <= 8 && Math.abs(p.y - cy) * rec.h <= 8) {
-        return { index, kind: "resize", corner };
+  if (!entry) return null;
+  // Check the visible resize handles before the body hit-test. The outer half
+  // of each handle sits outside the annotation rectangle, so requiring the
+  // pointer to be inside the box first makes the bottom-right corner unreliable.
+  if (selectedText && recs[selectedText.page] === rec) {
+    const selected = entry.annos[selectedText.index];
+    if (selected?.kind === "text" && selected.rect) {
+      const [x, y, rw, rh] = selected.rect;
+      const corners = {
+        nw: [x, y],
+        ne: [x + rw, y],
+        sw: [x, y + rh],
+        se: [x + rw, y + rh],
+      };
+      for (const [corner, [cx, cy]] of Object.entries(corners)) {
+        if (Math.abs(p.x - cx) * rec.w <= 9 && Math.abs(p.y - cy) * rec.h <= 9) {
+          return { index: selectedText.index, kind: "resize", corner };
+        }
       }
     }
   }
+  const index = textBoxAt(entry, p);
+  if (index < 0) return null;
   return { index, kind: "move" };
 }
 
