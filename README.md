@@ -48,12 +48,13 @@ app and choose **Open**, or allow it under **System Settings → Privacy & Secur
 Highlight, underline, strikeout, squiggly, freehand pen, rectangle, typed text,
 sticky notes, stamps, signature images, and black redaction boxes. Choose a
 colour and stroke width; erase annotations with the eraser. Text boxes accept
-typing directly on the page, expand as you type, and can be resized horizontally.
-Double-click an inserted text box in Select mode to edit it again. Text boxes are
-committed with `Ctrl+Enter`, by clicking outside, or by switching tools. The
-annotation toolbar is icon-based; hover a tool to see its name and shortcut. The
-pen tool uses a pen-shaped cursor, the eraser uses an eraser cursor, and the text
-tool uses a text cursor.
+typing directly on the page and expand as you type. Click an existing text box
+with the Text tool, or double-click it in Select mode, to edit it again. In Select
+mode, drag a text box to move it, resize it from any corner, or press `Delete` to
+remove it. Text boxes are committed with `Ctrl+Enter`, by clicking outside, or by
+switching tools. The annotation toolbar is icon-based; hover a tool to see its
+name and shortcut. The pen tool uses a pen-shaped cursor, the eraser uses an
+eraser cursor, and the text tool uses a text cursor.
 
 The Sign button offers **Type to sign** with four signature styles and an ink
 colour, plus the original freehand signature pad. A typed signature is rendered
@@ -103,7 +104,7 @@ and delete them from the Comments pane.
 | `Ctrl+0` / `Ctrl++` / `Ctrl+-` | Fit width / zoom in / zoom out |
 | `V` `H` `U` `K` `J` `P` `R` `T` `N` `M` `X` `C` `E` | Select, highlight, underline, strikeout, squiggly, pen, rectangle, text, note, stamp, redact, crop, erase |
 | `←` / `→` (`PageUp` / `PageDown`, `Space`) | Previous / next page |
-| `Delete` / `Backspace` | Delete current page |
+| `Delete` / `Backspace` | Delete the selected text box, otherwise the current page |
 | `Ctrl+Enter` | Commit a text box, sticky note or highlight comment while editing |
 | `Escape` | Cancel a text box or comment, or close a modal/menu |
 

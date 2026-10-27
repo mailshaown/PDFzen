@@ -60,6 +60,7 @@ const state = {
 const recs = []; // per page DOM record
 const visible = new Set();
 let drag = null;
+let selectedText = null; // { page, index } text box with visible resize handles
 let pendingSelection = null;
 let commentTarget = null;
 let selectionTimer = 0;
@@ -288,6 +289,7 @@ function createPageDom() {
   els.pages.innerHTML = "";
   recs.length = 0;
   visible.clear();
+  selectedText = null;
   const observer = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
@@ -363,10 +365,12 @@ function createPageDom() {
     overlay.addEventListener("pointercancel", () => {
       drag = null;
     });
+    surface.addEventListener("pointerdown", (ev) => onSurfacePointerDown(ev, i));
     surface.addEventListener("dblclick", (ev) => onSurfaceDoubleClick(ev, i));
     surface.addEventListener("pointermove", (ev) => onSurfacePointerMove(ev, i));
     surface.addEventListener("pointerleave", () => {
       surface.style.cursor = "";
+      surface.classList.remove("text-box-move", "text-box-resize-nwse", "text-box-resize-nesw");
     });
 
     observer.observe(wrap);
@@ -566,6 +570,7 @@ function drawOverlay(i) {
   }
 
   drawAnnotations(ctx, entry, w, h);
+  if (selectedText?.page === i) drawTextSelection(ctx, entry, w, h);
 
   if (entry.crop) drawCropShade(ctx, entry.crop, w, h);
 
@@ -580,6 +585,34 @@ function drawOverlay(i) {
     ctx.strokeRect(1, 1, w - 2, h - 2);
     ctx.restore();
   }
+}
+
+function drawTextSelection(ctx, entry, w, h) {
+  const anno = entry.annos[selectedText?.index];
+  if (!anno?.rect) return;
+  const [x, y, rw, rh] = anno.rect;
+  const left = x * w;
+  const top = y * h;
+  const width = Math.max(1, rw * w);
+  const height = Math.max(1, rh * h);
+  const handle = 6;
+  ctx.save();
+  ctx.strokeStyle = "#2563eb";
+  ctx.fillStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(left + 0.5, top + 0.5, Math.max(0, width - 1), Math.max(0, height - 1));
+  ctx.setLineDash([]);
+  for (const [cx, cy] of [
+    [left, top],
+    [left + width, top],
+    [left, top + height],
+    [left + width, top + height],
+  ]) {
+    ctx.fillRect(cx - handle / 2, cy - handle / 2, handle, handle);
+    ctx.strokeRect(cx - handle / 2, cy - handle / 2, handle, handle);
+  }
+  ctx.restore();
 }
 
 function drawCropShade(ctx, crop, w, h) {
@@ -849,15 +882,22 @@ function onPointerDown(ev, i) {
   if (ev.button !== 0) return;
   if (state.tool === "select") return;
   const rec = recs[i];
-  if (!rec) return;
+  const entry = state.pages[i];
+  if (!rec || !entry) return;
   const p = normPoint(rec, ev);
 
-  if (state.tool === "text") {
-    startTextEditor(i, p, "text");
-    return;
-  }
-  if (state.tool === "note") {
-    startTextEditor(i, p, "note");
+  if (state.tool === "text" || state.tool === "note") {
+    // Creating the textarea during pointerdown is not enough: the browser's
+    // compatibility mousedown would move focus back to the page and blur the
+    // new editor before the user can type. Canceling the pointer default keeps
+    // focus in the editor. Clicking an existing text box edits it in place.
+    ev.preventDefault();
+    const editIndex = editableAnnotationAt(entry, p);
+    const editTarget =
+      editIndex >= 0 && (state.tool === "text" || entry.annos[editIndex].kind === "note")
+        ? editIndex
+        : null;
+    startTextEditor(i, p, state.tool, editTarget);
     return;
   }
   if (state.tool === "erase") {
@@ -1032,6 +1072,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
     mode = editing.kind;
     p = { x: editing.rect[0], y: editing.rect[1] };
   }
+  if (editing?.kind === "text") selectTextBox(i, editIndex);
   // The shared color control starts on highlight yellow; use a readable dark
   // color for typed text until the user explicitly chooses an annotation color.
   const editorColor = editing
@@ -1058,19 +1099,28 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   ta.style.top = `${pageY * rec.h}px`;
   ta.style.width = `${width}px`;
   ta.style.height = `${initialHeight}px`;
+  ta.style.maxWidth = `${Math.max(80, rec.w - pageX * rec.w)}px`;
+  ta.style.maxHeight = `${Math.max(36, rec.h - pageY * rec.h)}px`;
   if (mode === "note") ta.placeholder = "Sticky note text…";
   ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
   ta.style.color = editorColor;
   if (editing?.text) ta.value = editing.text;
   rec.surface.appendChild(ta);
 
+  let autoGrow = true;
   const grow = () => {
-    if (!ta.isConnected) return;
+    if (!ta.isConnected || !autoGrow) return;
     const available = Math.max(initialHeight, rec.h - pageY * rec.h - 2);
     ta.style.height = "auto";
     ta.style.height = `${Math.min(available, Math.max(initialHeight, ta.scrollHeight + 4))}px`;
   };
   ta.addEventListener("input", grow);
+  // Once the user drags the native resize handle, keep the size they chose
+  // instead of immediately replacing it with the content height on the next key.
+  ta.addEventListener("pointerdown", (ev) => {
+    const box = ta.getBoundingClientRect();
+    if (ev.clientX >= box.right - 18 && ev.clientY >= box.bottom - 18) autoGrow = false;
+  });
   grow();
 
   // Focus after the pointer event finishes; otherwise the browser's default
@@ -1107,6 +1157,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
       if (editing) {
         pushHistory();
         entry.annos.splice(editIndex, 1);
+        if (selectedText?.page === i && selectedText.index === editIndex) selectedText = null;
         afterAnnotationChange(i);
         setHint("Text box removed.");
       } else {
@@ -1169,8 +1220,16 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
       // Finish the insertion instead of immediately starting another empty
       // text box at the pointer-up location.
       setTool("select");
-      setHint(`${mode === "note" ? "Note" : "Text"} added. Double-click it with Select to edit.`);
+      if (mode === "text") {
+        selectedText = { page: i, index: entry.annos.length - 1 };
+        drawOverlay(i);
+      }
+      setHint(`${mode === "note" ? "Note" : "Text"} added. Drag to move, resize from a corner, or double-click to edit.`);
     } else {
+      if (mode === "text") {
+        selectedText = { page: i, index: editIndex };
+        drawOverlay(i);
+      }
       setHint("Text updated. Save to embed it.");
     }
   };
@@ -1212,6 +1271,158 @@ function editableAnnotationAt(entry, p) {
   return -1;
 }
 
+function textBoxAt(entry, p) {
+  if (!entry) return -1;
+  for (let idx = entry.annos.length - 1; idx >= 0; idx--) {
+    const anno = entry.annos[idx];
+    if (anno.kind === "text" && anno.rect && pointInRect(p, anno.rect)) return idx;
+  }
+  return -1;
+}
+
+function selectTextBox(page, index) {
+  selectedText = { page, index };
+  drawOverlay(page);
+}
+
+function clearTextBoxSelection() {
+  const page = selectedText?.page;
+  selectedText = null;
+  if (Number.isInteger(page) && recs[page]) drawOverlay(page);
+}
+
+function textBoxInteractionAt(rec, entry, p) {
+  const index = textBoxAt(entry, p);
+  if (index < 0) return null;
+  const anno = entry.annos[index];
+  if (selectedText && recs[selectedText.page] === rec && selectedText.index === index) {
+    const [x, y, rw, rh] = anno.rect;
+    const corners = {
+      nw: [x, y],
+      ne: [x + rw, y],
+      sw: [x, y + rh],
+      se: [x + rw, y + rh],
+    };
+    for (const [corner, [cx, cy]] of Object.entries(corners)) {
+      if (Math.abs(p.x - cx) * rec.w <= 8 && Math.abs(p.y - cy) * rec.h <= 8) {
+        return { index, kind: "resize", corner };
+      }
+    }
+  }
+  return { index, kind: "move" };
+}
+
+function startTextBoxDrag(ev, i, hit) {
+  const rec = recs[i];
+  const entry = state.pages[i];
+  const anno = entry?.annos[hit.index];
+  if (!rec || !anno?.rect) return;
+  const start = normPoint(rec, ev);
+  const startRect = [...anno.rect];
+  let moved = false;
+
+  const minW = Math.min(0.5, Math.max(0.035, 80 / rec.w));
+  const minH = Math.min(0.5, Math.max(0.02, 32 / rec.h));
+
+  const move = (moveEv) => {
+    if (moveEv.pointerId !== ev.pointerId) return;
+    const p = normPoint(rec, moveEv);
+    const dx = p.x - start.x;
+    const dy = p.y - start.y;
+    if (!moved && Math.hypot(dx * rec.w, dy * rec.h) < 3) return;
+    if (!moved) {
+      moved = true;
+      pushHistory();
+    }
+    if (hit.kind === "move") {
+      anno.rect = [
+        Number(clamp(startRect[0] + dx, 0, Math.max(0, 1 - startRect[2])).toFixed(4)),
+        Number(clamp(startRect[1] + dy, 0, Math.max(0, 1 - startRect[3])).toFixed(4)),
+        startRect[2],
+        startRect[3],
+      ];
+    } else {
+      const corner = hit.corner;
+      let x0 = startRect[0];
+      let y0 = startRect[1];
+      let x1 = startRect[0] + startRect[2];
+      let y1 = startRect[1] + startRect[3];
+      if (corner.includes("w")) x0 = clamp(startRect[0] + dx, 0, x1 - minW);
+      if (corner.includes("e")) x1 = clamp(startRect[0] + startRect[2] + dx, x0 + minW, 1);
+      if (corner.includes("n")) y0 = clamp(startRect[1] + dy, 0, y1 - minH);
+      if (corner.includes("s")) y1 = clamp(startRect[1] + startRect[3] + dy, y0 + minH, 1);
+      anno.rect = [
+        Number(x0.toFixed(4)),
+        Number(y0.toFixed(4)),
+        Number((x1 - x0).toFixed(4)),
+        Number((y1 - y0).toFixed(4)),
+      ];
+    }
+    drawOverlay(i);
+  };
+
+  const finish = (finishEv) => {
+    if (finishEv.pointerId !== ev.pointerId) return;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+    try {
+      rec.surface.releasePointerCapture(ev.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (!moved) return;
+    afterAnnotationChange(i);
+    setHint(hit.kind === "resize" ? "Text box resized." : "Text box moved.");
+  };
+
+  try {
+    rec.surface.setPointerCapture(ev.pointerId);
+  } catch {
+    /* ignore */
+  }
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", finish);
+  window.addEventListener("pointercancel", finish);
+}
+
+function deleteSelectedTextBox() {
+  const sel = selectedText;
+  if (!sel) return false;
+  const entry = state.pages[sel.page];
+  const anno = entry?.annos[sel.index];
+  if (!anno || anno.kind !== "text") {
+    clearTextBoxSelection();
+    return false;
+  }
+  pushHistory();
+  entry.annos.splice(sel.index, 1);
+  selectedText = null;
+  afterAnnotationChange(sel.page);
+  setHint("Text box removed.");
+  return true;
+}
+
+function onSurfacePointerDown(ev, i) {
+  if (state.tool !== "select" || ev.button !== 0) return;
+  const rec = recs[i];
+  const entry = state.pages[i];
+  if (!rec || !entry) return;
+  const target = ev.target instanceof Element ? ev.target : null;
+  if (target?.closest(".text-editor")) return;
+  const p = normPoint(rec, ev);
+  const hit = textBoxInteractionAt(rec, entry, p);
+  if (!hit) {
+    if (selectedText?.page === i) clearTextBoxSelection();
+    return;
+  }
+  ev.preventDefault();
+  ev.stopPropagation();
+  window.getSelection()?.removeAllRanges();
+  selectTextBox(i, hit.index);
+  startTextBoxDrag(ev, i, hit);
+}
+
 function onSurfaceDoubleClick(ev, i) {
   if (state.tool !== "select") return;
   const rec = recs[i];
@@ -1234,11 +1445,27 @@ function onSurfacePointerMove(ev, i) {
   if (!rec || !entry) return;
   if (state.tool !== "select") {
     rec.surface.style.cursor = "";
+    rec.surface.classList.remove("text-box-move", "text-box-resize-nwse", "text-box-resize-nesw");
     return;
   }
   const target = ev.target instanceof Element ? ev.target : null;
   if (target?.closest(".text-editor")) return;
-  const editable = editableAnnotationAt(entry, normPoint(rec, ev)) >= 0;
+  const p = normPoint(rec, ev);
+  const hit = textBoxInteractionAt(rec, entry, p);
+  rec.surface.classList.toggle("text-box-move", hit?.kind === "move");
+  rec.surface.classList.toggle(
+    "text-box-resize-nwse",
+    hit?.kind === "resize" && (hit.corner === "nw" || hit.corner === "se"),
+  );
+  rec.surface.classList.toggle(
+    "text-box-resize-nesw",
+    hit?.kind === "resize" && (hit.corner === "ne" || hit.corner === "sw"),
+  );
+  if (hit) {
+    rec.surface.style.cursor = "";
+    return;
+  }
+  const editable = editableAnnotationAt(entry, p) >= 0;
   rec.surface.style.cursor = editable ? "text" : "";
 }
 
@@ -1649,6 +1876,7 @@ async function rebuild(keepPage = true) {
 
 function selectPage(i) {
   state.current = i;
+  if (selectedText && selectedText.page !== i) selectedText = null;
   els.thumbs.querySelectorAll(".thumb").forEach((el, idx) => {
     el.classList.toggle("selected", idx === i);
   });
@@ -3008,6 +3236,7 @@ function updateStatus() {
 function setTool(tool) {
   commitOpenEditor();
   hideSelectionMenu();
+  if (tool !== "select") clearTextBoxSelection();
   state.tool = tool;
   document.body.className = `tool-${tool}`;
   document.querySelectorAll(".tool").forEach((btn) => {
@@ -3016,7 +3245,7 @@ function setTool(tool) {
     btn.setAttribute("aria-pressed", String(active));
   });
   if (tool === "text") {
-    setHint("Click a page to add text. Double-click existing text with Select to edit.");
+    setHint("Click a page to add text, or click an existing text box to edit it.");
   } else if (tool === "note") {
     setHint("Click a page to add a sticky note.");
   }
@@ -3402,6 +3631,7 @@ window.addEventListener("keydown", (ev) => {
       state.pendingImage = null;
       setTool("select");
     }
+    if (selectedText) clearTextBoxSelection();
     return;
   }
 
@@ -3481,6 +3711,11 @@ window.addEventListener("keydown", (ev) => {
     return;
   }
   if (ev.key === "Delete" || ev.key === "Backspace") {
+    if (selectedText) {
+      ev.preventDefault();
+      deleteSelectedTextBox();
+      return;
+    }
     if (state.pages.length > 1) {
       ev.preventDefault();
       deletePage();

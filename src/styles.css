@@ -512,18 +512,35 @@ body.resizing-sidebar * {
   pointer-events: none;
 }
 
+/* The text layer's spans normally show a text cursor. A selected text box is
+   movable/resizable, so override that cursor over the whole annotation. */
+.page-surface.text-box-move,
+.page-surface.text-box-move .textLayer span {
+  cursor: move;
+}
+
+.page-surface.text-box-resize-nwse,
+.page-surface.text-box-resize-nwse .textLayer span {
+  cursor: nwse-resize;
+}
+
+.page-surface.text-box-resize-nesw,
+.page-surface.text-box-resize-nesw .textLayer span {
+  cursor: nesw-resize;
+}
+
 .text-editor {
   position: absolute;
   z-index: 10;
   box-sizing: border-box;
   min-width: 80px;
-  min-height: 32px;
+  min-height: 36px;
   border: 1px dashed var(--accent);
   background: #fff;
   color: #111;
   font-family: Helvetica, Arial, sans-serif;
   line-height: 1.2;
-  resize: horizontal;
+  resize: both;
   outline: none;
   padding: 2px;
   overflow: hidden;
