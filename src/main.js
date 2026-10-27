@@ -46,6 +46,7 @@ const state = {
   colorTouched: false,
   strokeWidth: 2,
   fontSize: 12,
+  fontFamily: "helvetica",
   search: { query: "", matches: [], index: -1 },
   path: null,
   history: [],
@@ -64,6 +65,9 @@ let selectedText = null; // { page, index } text box with visible resize handles
 let pendingSelection = null;
 let commentTarget = null;
 let selectionTimer = 0;
+let activeTextFormat = null;
+let textFormatRaf = 0;
+let textFormatPointerGuard = 0;
 
 /* ------------------------------------------------------------------ *
  * dom
@@ -95,6 +99,11 @@ const els = {
   commentTools: document.getElementById("comment-tools"),
   commentDraft: document.getElementById("comment-draft"),
   selectionMenu: document.getElementById("selection-menu"),
+  textFormatBar: document.getElementById("text-format-bar"),
+  textFont: document.getElementById("text-font"),
+  textSize: document.getElementById("text-size"),
+  textColor: document.getElementById("text-color"),
+  textFormatDone: document.getElementById("text-format-done"),
   commentPopover: document.getElementById("comment-popover"),
   commentPopoverText: document.getElementById("comment-popover-text"),
   commentRemove: document.getElementById("btn-comment-remove"),
@@ -118,6 +127,43 @@ const els = {
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+// These three families map to the standard PDF Type 1 fonts, so they render
+// consistently in PDFzen and in other PDF viewers without embedding font files.
+const TEXT_FONTS = {
+  helvetica: {
+    css: "Helvetica, Arial, sans-serif",
+    pdfNames: ["helv", "helvetica", "arial", "sans", "sans-serif"],
+  },
+  times: {
+    css: '"Times New Roman", Times, Georgia, serif',
+    pdfNames: ["tiro", "times", "times-roman", "times new roman", "serif"],
+  },
+  courier: {
+    css: '"Courier New", Courier, monospace',
+    pdfNames: ["cour", "courier", "courier new", "mono", "monospace"],
+  },
+};
+
+function normalizeTextFont(font) {
+  const value = String(font || "").trim().toLowerCase();
+  if (!value) return "helvetica";
+  for (const [key, spec] of Object.entries(TEXT_FONTS)) {
+    if (key === value || spec.pdfNames.includes(value)) return key;
+  }
+  if (value.includes("times") || value.includes("serif")) return "times";
+  if (value.includes("cour") || value.includes("mono")) return "courier";
+  return "helvetica";
+}
+
+function textFontCss(font) {
+  return TEXT_FONTS[normalizeTextFont(font)].css;
+}
+
+function normalizeTextSize(size) {
+  const n = Number(size);
+  return Number.isFinite(n) ? clamp(Math.round(n), 6, 96) : 12;
+}
 
 const SIDEBAR_DEFAULT_WIDTH = 224;
 const SIDEBAR_MIN_WIDTH = 176;
@@ -802,7 +848,7 @@ function drawAnnotations(ctx, entry, w, h) {
       ctx.rect(x * w, y * h, rw * w, rh * h);
       ctx.clip();
       ctx.fillStyle = a.color;
-      ctx.font = `${size}px Helvetica, Arial, sans-serif`;
+      ctx.font = `${size}px ${textFontCss(a.font)}`;
       ctx.textBaseline = "top";
       String(a.text || "")
         .split("\n")
@@ -1062,6 +1108,46 @@ function commitOpenEditor() {
   });
 }
 
+function hideTextFormatBar(editor = null) {
+  if (editor && activeTextFormat?.ta !== editor) return;
+  activeTextFormat = null;
+  textFormatPointerGuard = 0;
+  els.textFormatBar?.classList.add("hidden");
+}
+
+function positionTextFormatBar() {
+  const bar = els.textFormatBar;
+  const ta = activeTextFormat?.ta;
+  if (!bar || !ta?.isConnected || bar.classList.contains("hidden")) return;
+  const box = ta.getBoundingClientRect();
+  const barBox = bar.getBoundingClientRect();
+  const margin = 8;
+  const maxLeft = Math.max(margin, window.innerWidth - barBox.width - margin);
+  let left = clamp(box.left + box.width / 2 - barBox.width / 2, margin, maxLeft);
+  let top = box.top - barBox.height - 8;
+  if (top < margin) top = box.bottom + 8;
+  if (top + barBox.height > window.innerHeight - margin) {
+    top = Math.max(margin, window.innerHeight - barBox.height - margin);
+  }
+  bar.style.left = `${Math.round(left)}px`;
+  bar.style.top = `${Math.round(top)}px`;
+}
+
+function scheduleTextFormatPosition() {
+  cancelAnimationFrame(textFormatRaf);
+  textFormatRaf = requestAnimationFrame(positionTextFormatBar);
+}
+
+function showTextFormatBar(editor) {
+  activeTextFormat = editor;
+  if (!els.textFormatBar) return;
+  els.textFont.value = editor.font;
+  els.textSize.value = String(editor.size);
+  els.textColor.value = editor.color;
+  els.textFormatBar.classList.remove("hidden");
+  scheduleTextFormatPosition();
+}
+
 function startTextEditor(i, p, mode = "text", editIndex = null) {
   const rec = recs[i];
   const entry = state.pages[i];
@@ -1075,12 +1161,13 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   if (editing?.kind === "text") selectTextBox(i, editIndex);
   // The shared color control starts on highlight yellow; use a readable dark
   // color for typed text until the user explicitly chooses an annotation color.
-  const editorColor = editing
+  let editorColor = editing
     ? editing.color || (mode === "text" ? "#1f2937" : state.color)
     : mode === "text" && !state.colorTouched
       ? "#1f2937"
       : state.color;
-  const baseSize = Number(editing?.size) || state.fontSize;
+  let baseSize = normalizeTextSize(editing?.size || state.fontSize);
+  let editorFont = normalizeTextFont(editing?.font || state.fontFamily);
   const pageX = clamp(p.x);
   const pageY = clamp(p.y);
   const maxWidth = Math.max(80, rec.w - pageX * rec.w - 2);
@@ -1103,6 +1190,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   ta.style.maxWidth = `${Math.max(80, rec.w - pageX * rec.w)}px`;
   ta.style.maxHeight = `${Math.max(36, rec.h - pageY * rec.h)}px`;
   if (mode === "note") ta.placeholder = "Sticky note text…";
+  ta.style.fontFamily = textFontCss(editorFont);
   ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
   ta.style.color = editorColor;
   if (editing?.text) ta.value = editing.text;
@@ -1114,6 +1202,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
     const available = Math.max(initialHeight, rec.h - pageY * rec.h - 2);
     ta.style.height = "auto";
     ta.style.height = `${Math.min(available, Math.max(initialHeight, ta.scrollHeight + 4))}px`;
+    scheduleTextFormatPosition();
   };
   ta.addEventListener("input", grow);
   // Once the user drags the native resize handle, keep the size they chose
@@ -1140,9 +1229,11 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
   );
 
   let done = false;
+  let cleanupFormatting = () => {};
   const cancel = () => {
     if (done) return;
     done = true;
+    cleanupFormatting();
     ta.remove();
     drawOverlay(i);
   };
@@ -1154,6 +1245,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
     const boxW = Math.max(20, Math.min(ta.offsetWidth, rec.w - pageX * rec.w));
     const boxH = Math.max(ta.scrollHeight, ta.offsetHeight);
     ta.remove();
+    cleanupFormatting();
     if (!text) {
       if (editing) {
         pushHistory();
@@ -1201,6 +1293,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
         editing.text = text;
         editing.color = editorColor;
         editing.size = baseSize;
+        editing.font = editorFont;
       } else {
         entry.annos.push({
           kind: "text",
@@ -1213,6 +1306,7 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
           text,
           color: editorColor,
           size: baseSize,
+          font: editorFont,
         });
       }
     }
@@ -1235,8 +1329,70 @@ function startTextEditor(i, p, mode = "text", editIndex = null) {
     }
   };
 
+  if (mode === "text") {
+    const format = {
+      ta,
+      font: editorFont,
+      size: baseSize,
+      color: editorColor,
+      setFont(value) {
+        editorFont = normalizeTextFont(value);
+        format.font = editorFont;
+        ta.style.fontFamily = textFontCss(editorFont);
+        state.fontFamily = editorFont;
+        els.textFont.value = editorFont;
+        grow();
+        scheduleTextFormatPosition();
+      },
+      setSize(value) {
+        baseSize = normalizeTextSize(value);
+        format.size = baseSize;
+        ta.style.fontSize = `${Math.max(9, baseSize * (rec.w / (entry.dim?.w || rec.w)))}px`;
+        state.fontSize = baseSize;
+        els.textSize.value = String(baseSize);
+        grow();
+        scheduleTextFormatPosition();
+      },
+      setColor(value) {
+        const color = /^#[0-9a-f]{6}$/i.test(String(value)) ? String(value) : "#1f2937";
+        editorColor = color;
+        format.color = color;
+        ta.style.color = color;
+        state.color = color;
+        state.colorTouched = true;
+        els.color.value = color;
+        els.textColor.value = color;
+      },
+      commit,
+    };
+    showTextFormatBar(format);
+    const reposition = () => scheduleTextFormatPosition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    let observer = null;
+    if ("ResizeObserver" in window) {
+      observer = new ResizeObserver(reposition);
+      observer.observe(ta);
+    }
+    cleanupFormatting = () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+      observer?.disconnect();
+      hideTextFormatBar(ta);
+    };
+  }
+
   ta.__commit = commit;
-  ta.addEventListener("blur", commit);
+  ta.addEventListener("blur", () => {
+    // Give a clicked formatting control time to receive focus. If focus moved
+    // into the floating bar, keep the editor open so formatting stays live.
+    setTimeout(() => {
+      if (done) return;
+      if (Date.now() < textFormatPointerGuard) return;
+      if (els.textFormatBar?.contains(document.activeElement)) return;
+      commit();
+    }, 0);
+  });
   ta.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
@@ -2066,6 +2222,7 @@ async function buildPayload(pages, extras = true, includeSecurity = true) {
       if (a.rects) item.rects = a.rects;
       if (a.points) item.points = a.points;
       if (a.text) item.text = a.text;
+      if (a.kind === "text") item.font = normalizeTextFont(a.font);
       if (a.label) item.label = a.label;
       if (a.image) item.image = a.image;
       annotations.push(item);
@@ -2293,12 +2450,14 @@ async function annotationsFromPdfPage(page) {
     } else if (subtype === "text") {
       out.push({ kind: "note", rect, color, text: contents || undefined });
     } else if (subtype === "freetext") {
+      const appearance = annotation.defaultAppearanceData || {};
       out.push({
         kind: "text",
         rect,
-        color: pdfColorHex(annotation.color, "#1f2937"),
+        color: pdfColorHex(annotation.color ?? appearance.fontColor, "#1f2937"),
         text: contents || undefined,
-        size: Number(annotation.fontSize) || 12,
+        size: normalizeTextSize(appearance.fontSize ?? annotation.fontSize),
+        font: normalizeTextFont(appearance.fontName ?? annotation.fontName),
       });
     } else if (subtype === "square") {
       out.push({ kind: "square", rect, color, width: Number(annotation.borderStyle?.width) || 2 });
@@ -3290,6 +3449,8 @@ document.querySelectorAll(".tool").forEach((btn) => {
 document.addEventListener(
   "pointerdown",
   (ev) => {
+    const target = ev.target instanceof Element ? ev.target : null;
+    if (target?.closest("#text-format-bar")) return;
     document.querySelectorAll(".text-editor").forEach((ta) => {
       if (!ta.contains(ev.target) && ta.__commit) ta.__commit();
     });
@@ -3428,6 +3589,34 @@ els.color.addEventListener("input", () => {
 });
 els.width.addEventListener("input", () => {
   state.strokeWidth = Number(els.width.value);
+});
+
+els.textFont?.addEventListener("change", () => {
+  activeTextFormat?.setFont(els.textFont.value);
+});
+els.textSize?.addEventListener("input", () => {
+  const raw = els.textSize.value;
+  const value = Number(raw);
+  if (!activeTextFormat || raw === "" || !Number.isFinite(value) || value < 6 || value > 96) return;
+  activeTextFormat.setSize(value);
+});
+els.textSize?.addEventListener("change", () => {
+  activeTextFormat?.setSize(els.textSize.value);
+});
+els.textColor?.addEventListener("input", () => {
+  activeTextFormat?.setColor(els.textColor.value);
+});
+els.textColor?.addEventListener("change", () => {
+  activeTextFormat?.setColor(els.textColor.value);
+});
+els.textFormatDone?.addEventListener("click", () => {
+  activeTextFormat?.commit();
+});
+els.textFormatBar?.addEventListener("pointerdown", (ev) => {
+  textFormatPointerGuard = Date.now() + 1000;
+  if (ev.target !== els.textFormatBar) return;
+  ev.preventDefault();
+  activeTextFormat?.ta.focus();
 });
 
 // floating menus (export and theme)

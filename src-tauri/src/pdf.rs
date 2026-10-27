@@ -85,6 +85,9 @@ pub struct Anno {
     pub text: Option<String>,
     #[serde(default = "default_font_size")]
     pub size: f64,
+    /// Text box family: helvetica, times, or courier.
+    #[serde(default = "default_font")]
+    pub font: String,
     /// Base64 JPEG data for image stamps / signatures.
     #[serde(default)]
     pub image: Option<String>,
@@ -101,6 +104,9 @@ fn default_width() -> f64 {
 }
 fn default_font_size() -> f64 {
     12.0
+}
+fn default_font() -> String {
+    "helvetica".into()
 }
 
 #[derive(Deserialize, Default)]
@@ -283,12 +289,34 @@ fn appearance(
     out.add_object(Stream::new(dict, content.into_bytes()))
 }
 
-fn helv_resources(font_id: ObjectId) -> Dictionary {
+fn font_resources(name: &str, font_id: ObjectId) -> Dictionary {
     let mut fonts = Dictionary::new();
-    fonts.set("Helv", Object::Reference(font_id));
+    fonts.set(name, Object::Reference(font_id));
     let mut resources = Dictionary::new();
     resources.set("Font", Object::Dictionary(fonts));
     resources
+}
+
+#[derive(Clone, Copy)]
+struct AnnotationFonts {
+    helvetica: ObjectId,
+    times: ObjectId,
+    courier: ObjectId,
+}
+
+impl AnnotationFonts {
+    fn for_annotation(self, anno: &Anno) -> (&'static str, ObjectId) {
+        let font = anno.font.trim().to_ascii_lowercase();
+        if font.contains("sans") {
+            ("Helv", self.helvetica)
+        } else if font.contains("times") || font.contains("serif") || font == "tiro" {
+            ("TiRo", self.times)
+        } else if font.contains("cour") || font.contains("mono") {
+            ("Cour", self.courier)
+        } else {
+            ("Helv", self.helvetica)
+        }
+    }
 }
 
 fn escape_pdf_text(text: &str) -> String {
@@ -342,7 +370,7 @@ fn annotation_object(
     anno: &Anno,
     page_w: f64,
     page_h: f64,
-    font_id: ObjectId,
+    fonts: AnnotationFonts,
 ) -> Object {
     let (r, g, b) = color_of(anno);
     let raw = anno.rect.unwrap_or([0.0, 0.0, 0.02, 0.02]);
@@ -658,8 +686,9 @@ fn annotation_object(
         "text" => {
             let text = anno.text.clone().unwrap_or_default();
             let font_size = anno.size.clamp(4.0, 96.0);
+            let (font_key, font_id) = fonts.for_annotation(anno);
             let lead = font_size * 1.2;
-            let mut content = format!("q BT /Helv {font_size} Tf {r} {g} {b} rg ");
+            let mut content = format!("q BT /{font_key} {font_size} Tf {r} {g} {b} rg ");
             for (i, line) in text.lines().enumerate() {
                 let y = height - font_size - (i as f64 * lead);
                 content.push_str(&format!(
@@ -673,9 +702,9 @@ fn annotation_object(
                 out,
                 [0.0, 0.0, width, height],
                 content,
-                Some(helv_resources(font_id)),
+                Some(font_resources(font_key, font_id)),
             );
-            let da = format!("/Helv {size} Tf {r} {g} {b} rg", size = font_size);
+            let da = format!("/{font_key} {size} Tf {r} {g} {b} rg", size = font_size);
             let dict = dictionary! {
                 "Type" => "Annot",
                 "Subtype" => "FreeText",
@@ -740,7 +769,7 @@ fn annotation_object(
                 out,
                 [0.0, 0.0, width, height],
                 content,
-                Some(helv_resources(font_id)),
+                Some(font_resources("Helv", fonts.helvetica)),
             );
             let dict = dictionary! {
                 "Type" => "Annot",
@@ -995,6 +1024,23 @@ pub fn build(payload: Payload) -> Result<Vec<u8>, String> {
         "BaseFont" => "Helvetica",
         "Encoding" => "WinAnsiEncoding",
     });
+    let times_id = out.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Times-Roman",
+        "Encoding" => "WinAnsiEncoding",
+    });
+    let courier_id = out.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Courier",
+        "Encoding" => "WinAnsiEncoding",
+    });
+    let annotation_fonts = AnnotationFonts {
+        helvetica: font_id,
+        times: times_id,
+        courier: courier_id,
+    };
 
     let total_pages = payload.pages.len();
     let mut kids: Vec<Object> = Vec::new();
@@ -1078,7 +1124,7 @@ pub fn build(payload: Payload) -> Result<Vec<u8>, String> {
         // Annotations that belong to this output page.
         let mut annots: Vec<Object> = Vec::new();
         for anno in payload.annotations.iter().filter(|a| a.page == page_no) {
-            let obj = annotation_object(&mut out, anno, new_w, new_h, font_id);
+            let obj = annotation_object(&mut out, anno, new_w, new_h, annotation_fonts);
             if !matches!(obj, Object::Null) {
                 annots.push(obj);
             }
@@ -1701,6 +1747,7 @@ mod tests {
             points: None,
             text: None,
             size: 12.0,
+            font: "helvetica".into(),
             image: None,
             label: None,
         }
@@ -1840,6 +1887,48 @@ mod tests {
             b"FreeText"
         );
         assert!(dict.get(b"Contents").is_ok());
+    }
+
+    #[test]
+    fn writes_text_annotation_font_families() {
+        let annotations = vec![
+            Anno {
+                kind: "text".into(),
+                text: Some("Sans".into()),
+                font: "helvetica".into(),
+                rect: Some([0.1, 0.1, 0.2, 0.05]),
+                ..plain_anno("text")
+            },
+            Anno {
+                kind: "text".into(),
+                text: Some("Serif".into()),
+                font: "times".into(),
+                rect: Some([0.1, 0.2, 0.2, 0.05]),
+                ..plain_anno("text")
+            },
+            Anno {
+                kind: "text".into(),
+                text: Some("Mono".into()),
+                font: "courier".into(),
+                rect: Some([0.1, 0.3, 0.2, 0.05]),
+                ..plain_anno("text")
+            },
+        ];
+        let out = build(payload_for(annotations)).expect("build pdf");
+        let doc = Document::load_mem(&out).expect("reparse");
+        let pages = doc.get_pages();
+        let page = doc.get_dictionary(pages[&1]).unwrap();
+        let annots = page.get(b"Annots").unwrap().as_array().unwrap();
+        let expected = ["/Helv ", "/TiRo ", "/Cour "];
+        for (annot, key) in annots.iter().zip(expected) {
+            let dict = match annot {
+                Object::Dictionary(d) => d,
+                Object::Reference(id) => doc.get_dictionary(*id).unwrap(),
+                _ => panic!("unexpected annot object"),
+            };
+            let da = std::str::from_utf8(dict.get(b"DA").unwrap().as_str().unwrap()).unwrap();
+            assert!(da.contains(key), "expected {key} in DA {da}");
+        }
     }
 
     #[test]

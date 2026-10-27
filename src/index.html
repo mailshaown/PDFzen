@@ -286,6 +286,40 @@
         <button id="btn-selection-comment" class="btn primary">Comment</button>
       </div>
 
+      <div
+        id="text-format-bar"
+        class="text-format-bar hidden"
+        role="toolbar"
+        aria-label="Text box formatting"
+      >
+        <label class="text-format-field">
+          <span>Font</span>
+          <select id="text-font" class="select" title="Text font">
+            <option value="helvetica">Arial / Sans</option>
+            <option value="times">Times / Serif</option>
+            <option value="courier">Courier / Mono</option>
+          </select>
+        </label>
+        <label class="text-format-field">
+          <span>Size</span>
+          <input
+            id="text-size"
+            class="text-format-size"
+            type="number"
+            min="6"
+            max="96"
+            step="1"
+            value="12"
+            title="Text size in points"
+          />
+        </label>
+        <label class="text-format-field text-format-color" title="Text colour">
+          <span>Colour</span>
+          <input id="text-color" type="color" value="#1f2937" />
+        </label>
+        <button id="text-format-done" class="btn primary" type="button">Done</button>
+      </div>
+
       <div id="comment-popover" class="comment-popover hidden" role="dialog" aria-label="Comment on highlight">
         <div class="comment-popover-head">
           <strong>Comment</strong>

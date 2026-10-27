@@ -553,6 +553,62 @@ body.resizing-sidebar * {
   background: #fff;
 }
 
+.text-format-bar {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
+  color: var(--text);
+}
+
+.text-format-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.text-format-field .select {
+  height: 28px;
+  max-width: 132px;
+  padding: 2px 6px;
+}
+
+.text-format-size {
+  width: 54px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.text-format-color input[type="color"] {
+  width: 30px;
+  height: 28px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.text-format-bar .btn {
+  height: 28px;
+  padding: 0 10px;
+}
+
 /* Floating actions for a text selection and the comment editor for a
    highlight. Both are fixed-position so they stay readable while the viewer
    scrolls underneath them. */
@@ -1274,10 +1330,12 @@ body.resizing-sidebar * {
 
 :root[data-theme="dark"] .select,
 :root[data-theme="dark"] .text-input,
+:root[data-theme="dark"] .text-format-size,
 :root[data-theme="dark"] .menu,
 :root[data-theme="dark"] .comment-item,
 :root[data-theme="dark"] .comment-popover,
 :root[data-theme="dark"] .selection-menu,
+:root[data-theme="dark"] .text-format-bar,
 :root[data-theme="dark"] .comment-popover-text {
   background: #2c3036;
   color: var(--text);

@@ -48,8 +48,11 @@ app and choose **Open**, or allow it under **System Settings → Privacy & Secur
 Highlight, underline, strikeout, squiggly, freehand pen, rectangle, typed text,
 sticky notes, stamps, signature images, and black redaction boxes. Choose a
 colour and stroke width; erase annotations with the eraser. Text boxes accept
-typing directly on the page and expand as you type. Click an existing text box
-with the Text tool, or double-click it in Select mode, to edit it again. In Select
+typing directly on the page and expand as you type. While a text box is open, a
+floating bar controls its font, point size and colour. Font choices map to the
+standard PDF Helvetica, Times and Courier families, and all three properties are
+applied live and kept in the saved PDF. Click an existing text box with the Text
+tool, or double-click it in Select mode, to edit it again. In Select
 mode, drag a text box to move it, resize it from any corner, or press `Delete` to
 remove it. Text boxes are committed with `Ctrl+Enter`, by clicking outside, or by
 switching tools. The annotation toolbar is icon-based; hover a tool to see its
