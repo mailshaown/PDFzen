@@ -24,6 +24,12 @@ app and choose **Open**, or allow it under **System Settings → Privacy & Secur
 
 ## Features
 
+### Getting started
+
+A guided tour opens automatically on the first launch. Use **Next** / **Back**,
+the progress dots, or the arrow keys; **Skip tour** or `Esc` dismisses it. Replay
+the tour anytime with the **?** button in the top bar.
+
 ### Reading
 
 - Continuous, lazily rendered pages with zoom, fit-to-width and a page-number
