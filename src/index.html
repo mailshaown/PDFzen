@@ -219,9 +219,14 @@
               <span>Color</span>
               <input type="color" id="color" value="#ffd400" />
             </label>
-            <label class="compact-field" title="Stroke width">
+            <label class="compact-field stroke-width-field" title="Stroke width">
               <span>Width</span>
               <input type="range" id="width" min="1" max="12" value="2" />
+            </label>
+            <label class="compact-field pen-width-field" title="Pen line thickness">
+              <span>Thickness</span>
+              <input type="range" id="pen-width" min="1" max="24" step="1" value="3" />
+              <span id="pen-width-value" class="compact-value">3 pt</span>
             </label>
             <select id="stamp-label" class="select" title="Stamp label">
               <option>APPROVED</option>

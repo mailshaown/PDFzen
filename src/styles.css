@@ -1833,6 +1833,30 @@ body.resizing-sidebar * {
   white-space: nowrap;
 }
 
+.pen-width-field {
+  display: none;
+}
+
+body.tool-ink .pen-width-field {
+  display: flex;
+}
+
+body.tool-ink .stroke-width-field {
+  display: none;
+}
+
+.pen-width-field input[type="range"] {
+  width: 88px;
+}
+
+.compact-value {
+  min-width: 32px;
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .command-spacer {
   flex: 1 1 auto;
   min-width: 8px;

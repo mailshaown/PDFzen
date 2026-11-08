@@ -45,6 +45,7 @@ const state = {
   color: "#ffd400",
   colorTouched: false,
   strokeWidth: 2,
+  penWidth: 3,
   fontSize: 12,
   fontFamily: "helvetica",
   search: { query: "", matches: [], index: -1 },
@@ -93,6 +94,8 @@ const els = {
   docSubtitle: document.getElementById("doc-subtitle"),
   color: document.getElementById("color"),
   width: document.getElementById("width"),
+  penWidth: document.getElementById("pen-width"),
+  penWidthValue: document.getElementById("pen-width-value"),
   stampLabel: document.getElementById("stamp-label"),
   exportMenu: document.getElementById("export-menu"),
   themeMenu: document.getElementById("theme-menu"),
@@ -936,7 +939,7 @@ function drawDragPreview(ctx, d, w, h) {
     if (d.points.length > 1) {
       ctx.setLineDash([]);
       ctx.strokeStyle = c;
-      ctx.lineWidth = state.strokeWidth;
+      ctx.lineWidth = state.penWidth;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -1255,7 +1258,7 @@ function onPointerUp() {
       kind: "ink",
       points: points.map((p) => [Number(p.x.toFixed(4)), Number(p.y.toFixed(4))]),
       color: state.color,
-      width: state.strokeWidth,
+      width: state.penWidth,
     });
     afterAnnotationChange(i);
     return;
@@ -3866,6 +3869,8 @@ function setTool(tool) {
   });
   if (tool === "text") {
     setHint("Click a page to add text, or click an existing text box to edit it.");
+  } else if (tool === "ink") {
+    setHint("Click and drag to draw. Adjust Thickness in the toolbar.");
   } else if (tool === "note") {
     setHint("Click a page to add a sticky note.");
   } else if (tool === "select" && state.pages.some((entry) => entry.fields?.length)) {
@@ -4045,6 +4050,10 @@ els.color.addEventListener("input", () => {
 });
 els.width.addEventListener("input", () => {
   state.strokeWidth = Number(els.width.value);
+});
+els.penWidth.addEventListener("input", () => {
+  state.penWidth = Number(els.penWidth.value);
+  els.penWidthValue.textContent = `${state.penWidth} pt`;
 });
 
 els.textFont?.addEventListener("change", () => {
@@ -4424,6 +4433,8 @@ setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
 updateStatus();
 els.color.value = state.color;
 els.width.value = String(state.strokeWidth);
+els.penWidth.value = String(state.penWidth);
+els.penWidthValue.textContent = `${state.penWidth} pt`;
 setHint("Open a PDF to get started");
 
 // Small debug handle used by the automated UI checks and CDP verification.
