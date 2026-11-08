@@ -34,181 +34,221 @@
   <body class="tool-select">
     <div class="app">
       <header class="toolbar">
-        <div class="brand" title="PDFzen" aria-label="PDFzen">
-          <img class="brand-mark" src="/assets/pdfzen-icon.svg" alt="" />
-          <span class="brand-name">PDFzen</span>
-        </div>
-        <div class="group">
-          <button id="btn-open" class="btn primary">Open</button>
-          <button id="btn-add" class="btn">Add pages…</button>
-          <button id="btn-save" class="btn">Save</button>
-          <button id="btn-save-as" class="btn">Save as…</button>
-        </div>
+        <div class="app-bar">
+          <div class="brand" title="PDFzen" aria-label="PDFzen">
+            <img class="brand-mark" src="/assets/pdfzen-icon.svg" alt="" />
+            <span class="brand-name">PDFzen</span>
+          </div>
 
-        <div class="sep"></div>
+          <div class="doc-tab">
+            <span class="doc-tab-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M6 2.5h8l4 4V21.5H6z" />
+                <path d="M14 2.5v5h4" />
+                <path d="M8.5 13h7M8.5 16h5" />
+              </svg>
+            </span>
+            <span class="doc-tab-copy">
+              <span id="doc-title" class="doc-title">No document open</span>
+              <span id="doc-subtitle" class="doc-subtitle">Open a PDF to begin</span>
+            </span>
+          </div>
 
-        <div class="group tools" id="tool-group" role="toolbar" aria-label="Annotation tools">
-          <button class="tool" data-tool="select" aria-label="Select text or pan" title="Select text / pan (V)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M5 2.5 19.5 11l-6.6 1.6L10 20z" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="highlight" aria-label="Highlight" title="Highlight (H)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="m9 11-6 6v3h9l3-3" />
-              <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4z" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="underline" aria-label="Underline" title="Underline (U)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M6 4v6a6 6 0 0 0 12 0V4" />
-              <path d="M4 20h16" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="strikeout" aria-label="Strike out" title="Strike out (K)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M16 4H9a3 3 0 0 0-2.83 4" />
-              <path d="M14 12a4 4 0 0 1 0 8H6" />
-              <path d="M4 12h16" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="squiggly" aria-label="Squiggly underline" title="Squiggly underline (J)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 7h16" />
-              <path d="M3 16c2.5-4 5-4 7 0s4.5 4 7 0 3-2 4-1" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="ink" aria-label="Pen" title="Pen (P)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
-              <path d="m15 5 4 4" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="square" aria-label="Rectangle" title="Rectangle (R)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <rect x="4" y="5" width="16" height="14" rx="1.5" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="text" aria-label="Text box" title="Text box (T)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 7V4h16v3" />
-              <path d="M9 20h6" />
-              <path d="M12 4v16" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="note" aria-label="Sticky note" title="Sticky note (N)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 4h16v10l-6 6H4z" />
-              <path d="M20 14h-6v6" />
-              <path d="M8 9h8" />
-              <path d="M8 12h5" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="stamp" aria-label="Stamp" title="Stamp (M)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M5 21h14" />
-              <path d="M9 17h6v-2H9z" />
-              <path d="M10 15v-3a2 2 0 1 1 4 0v3" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="redact" aria-label="Black redaction box" title="Black box (X)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <rect x="3" y="5" width="18" height="14" rx="2" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="crop" aria-label="Crop page" title="Crop page (C)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-              <path d="M2 6h14a2 2 0 0 1 2 2v14" />
-            </svg>
-          </button>
-          <button class="tool" data-tool="erase" aria-label="Erase annotation" title="Erase annotation (E)">
-            <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4L13 5a2 2 0 0 1 2.8 0l5.2 5.2a2 2 0 0 1 0 2.8L13 21z" />
-              <path d="M22 21H7" />
-              <path d="m5 11 9 9" />
-            </svg>
-          </button>
-        </div>
-
-        <div class="group">
-          <input type="color" id="color" value="#ffd400" title="Annotation colour" />
-          <input type="range" id="width" min="1" max="12" value="2" title="Stroke width" />
-          <select id="stamp-label" class="select" title="Stamp label">
-            <option>APPROVED</option>
-            <option>DRAFT</option>
-            <option>CONFIDENTIAL</option>
-            <option>REVIEWED</option>
-            <option>REVISED</option>
-            <option>VOID</option>
-          </select>
-        </div>
-
-        <div class="group">
-          <button id="btn-sign" class="btn" title="Draw and place a signature">Sign…</button>
-          <button id="btn-print" class="btn" title="Print (Ctrl+P)">Print</button>
-          <div class="menu-wrap">
-            <button id="btn-export" class="btn" title="Export">Export ▾</button>
-            <div id="export-menu" class="menu hidden">
-              <button data-export="text">Text (.txt)</button>
-              <button data-export="png">Current page as PNG…</button>
-              <button data-export="images">Embedded images…</button>
-              <button data-export="images-pdf">Create PDF from images…</button>
+          <div class="app-actions">
+            <div class="group icon-group">
+              <button id="btn-undo" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M9 14 4 9l5-5" />
+                  <path d="M4 9h9a7 7 0 0 1 0 14h-2" />
+                </svg>
+              </button>
+              <button id="btn-redo" class="btn icon" title="Redo (Ctrl+Y)" aria-label="Redo">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m15 14 5-5-5-5" />
+                  <path d="M20 9h-9a7 7 0 0 0 0 14h2" />
+                </svg>
+              </button>
+            </div>
+            <span class="sep"></span>
+            <div class="group file-group">
+              <button id="btn-open" class="btn primary">Open</button>
+              <button id="btn-add" class="btn">Add pages&hellip;</button>
+              <button id="btn-save" class="btn">Save</button>
+              <button id="btn-save-as" class="btn">Save as&hellip;</button>
+              <button id="btn-print" class="btn" title="Print (Ctrl+P)">Print</button>
+              <div class="menu-wrap">
+                <button id="btn-export" class="btn" title="Export">Export <span class="caret">&#9662;</span></button>
+                <div id="export-menu" class="menu hidden">
+                  <button data-export="text">Text (.txt)</button>
+                  <button data-export="png">Current page as PNG&hellip;</button>
+                  <button data-export="images">Embedded images&hellip;</button>
+                  <button data-export="images-pdf">Create PDF from images&hellip;</button>
+                </div>
+              </div>
+              <button id="btn-sign" class="btn" title="Draw and place a signature">Sign&hellip;</button>
+              <button id="btn-options" class="btn" title="Document &amp; save options">Options&hellip;</button>
+              <div class="menu-wrap theme-wrap">
+                <button
+                  id="btn-theme"
+                  class="btn icon theme-toggle"
+                  title="Theme: Auto"
+                  aria-label="Theme: Auto"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                >
+                  <svg class="theme-icon theme-icon-auto" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" />
+                  </svg>
+                  <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                  </svg>
+                  <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />
+                  </svg>
+                </button>
+                <div id="theme-menu" class="menu theme-menu hidden" role="menu" aria-label="Theme">
+                  <button type="button" data-theme="auto" role="menuitemradio" aria-checked="true">
+                    <span>Auto (device)</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+                  </button>
+                  <button type="button" data-theme="light" role="menuitemradio" aria-checked="false">
+                    <span>Light</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+                  </button>
+                  <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
+                    <span>Dark</span><span class="menu-check" aria-hidden="true">&#10003;</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-          <button id="btn-options" class="btn" title="Document &amp; save options">Options…</button>
-          <div class="menu-wrap theme-wrap">
-            <button
-              id="btn-theme"
-              class="btn icon theme-toggle"
-              title="Theme: Auto"
-              aria-label="Theme: Auto"
-              aria-haspopup="menu"
-              aria-expanded="false"
-            >
-              <svg class="theme-icon theme-icon-auto" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="12" cy="12" r="8" />
-                <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" />
-              </svg>
-              <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-              </svg>
-              <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />
+        </div>
+
+        <div class="command-bar">
+          <div class="group tools" id="tool-group" role="toolbar" aria-label="Annotation tools">
+            <button class="tool" data-tool="select" aria-label="Select text or pan" title="Select text / pan (V)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 2.5 19.5 11l-6.6 1.6L10 20z" fill="currentColor" stroke="none" />
               </svg>
             </button>
-            <div id="theme-menu" class="menu theme-menu hidden" role="menu" aria-label="Theme">
-              <button type="button" data-theme="auto" role="menuitemradio" aria-checked="true">
-                <span>Auto (device)</span><span class="menu-check" aria-hidden="true">&#10003;</span>
-              </button>
-              <button type="button" data-theme="light" role="menuitemradio" aria-checked="false">
-                <span>Light</span><span class="menu-check" aria-hidden="true">&#10003;</span>
-              </button>
-              <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
-                <span>Dark</span><span class="menu-check" aria-hidden="true">&#10003;</span>
-              </button>
-            </div>
+            <span class="tool-sep" aria-hidden="true"></span>
+            <button class="tool" data-tool="highlight" aria-label="Highlight" title="Highlight (H)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m9 11-6 6v3h9l3-3" />
+                <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4z" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="underline" aria-label="Underline" title="Underline (U)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 4v6a6 6 0 0 0 12 0V4" />
+                <path d="M4 20h16" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="strikeout" aria-label="Strike out" title="Strike out (K)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M16 4H9a3 3 0 0 0-2.83 4" />
+                <path d="M14 12a4 4 0 0 1 0 8H6" />
+                <path d="M4 12h16" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="squiggly" aria-label="Squiggly underline" title="Squiggly underline (J)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7h16" />
+                <path d="M3 16c2.5-4 5-4 7 0s4.5 4 7 0 3-2 4-1" />
+              </svg>
+            </button>
+            <span class="tool-sep" aria-hidden="true"></span>
+            <button class="tool" data-tool="ink" aria-label="Pen" title="Pen (P)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+                <path d="m15 5 4 4" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="square" aria-label="Rectangle" title="Rectangle (R)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="4" y="5" width="16" height="14" rx="1.5" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="text" aria-label="Text box" title="Text box (T)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7V4h16v3" />
+                <path d="M9 20h6" />
+                <path d="M12 4v16" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="note" aria-label="Sticky note" title="Sticky note (N)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 4h16v10l-6 6H4z" />
+                <path d="M20 14h-6v6" />
+                <path d="M8 9h8" />
+                <path d="M8 12h5" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="stamp" aria-label="Stamp" title="Stamp (M)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 21h14" />
+                <path d="M9 17h6v-2H9z" />
+                <path d="M10 15v-3a2 2 0 1 1 4 0v3" />
+              </svg>
+            </button>
+            <span class="tool-sep" aria-hidden="true"></span>
+            <button class="tool" data-tool="redact" aria-label="Black redaction box" title="Black box (X)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3" y="5" width="18" height="14" rx="2" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="crop" aria-label="Crop page" title="Crop page (C)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                <path d="M2 6h14a2 2 0 0 1 2 2v14" />
+              </svg>
+            </button>
+            <button class="tool" data-tool="erase" aria-label="Erase annotation" title="Erase annotation (E)">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4L13 5a2 2 0 0 1 2.8 0l5.2 5.2a2 2 0 0 1 0 2.8L13 21z" />
+                <path d="M22 21H7" />
+                <path d="m5 11 9 9" />
+              </svg>
+            </button>
           </div>
-        </div>
 
-        <div class="group">
-          <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)">Undo</button>
-          <button id="btn-redo" class="btn" title="Redo (Ctrl+Y)">Redo</button>
-        </div>
+          <span class="sep" aria-hidden="true"></span>
 
-        <div class="group push">
-          <button id="btn-zoom-out" class="btn icon" title="Zoom out">−</button>
-          <span id="zoom-label" class="label">100%</span>
-          <button id="btn-zoom-in" class="btn icon" title="Zoom in">+</button>
-          <button id="btn-fit" class="btn" title="Fit width">Fit</button>
-        </div>
+          <div class="group format-group">
+            <label class="compact-field" title="Annotation colour">
+              <span>Color</span>
+              <input type="color" id="color" value="#ffd400" />
+            </label>
+            <label class="compact-field" title="Stroke width">
+              <span>Width</span>
+              <input type="range" id="width" min="1" max="12" value="2" />
+            </label>
+            <select id="stamp-label" class="select" title="Stamp label">
+              <option>APPROVED</option>
+              <option>DRAFT</option>
+              <option>CONFIDENTIAL</option>
+              <option>REVIEWED</option>
+              <option>REVISED</option>
+              <option>VOID</option>
+            </select>
+          </div>
 
-        <div class="group">
-          <input id="search" type="search" placeholder="Find in document…" />
-          <span id="search-label" class="label"></span>
-          <button id="btn-search-prev" class="btn icon" title="Previous match">↑</button>
-          <button id="btn-search-next" class="btn icon" title="Next match">↓</button>
+          <div class="command-spacer"></div>
+
+          <div class="group search-group">
+            <input id="search" type="search" placeholder="Find in document" />
+            <span id="search-label" class="label"></span>
+            <button id="btn-search-prev" class="btn icon" title="Previous match" aria-label="Previous match">
+              <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <button id="btn-search-next" class="btn icon" title="Next match" aria-label="Next match">
+              <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -229,30 +269,51 @@
             <button id="btn-add-comment" class="btn primary" title="Add a comment to the current page">Add</button>
           </div>
 
-          <div class="sidebar-actions">
-            <button id="btn-rot-left" class="btn icon" title="Rotate page left">⟲</button>
-            <button id="btn-rot-right" class="btn icon" title="Rotate page right">⟳</button>
-            <button id="btn-move-up" class="btn icon" title="Move page up">↑</button>
-            <button id="btn-move-down" class="btn icon" title="Move page down">↓</button>
-            <button id="btn-delete" class="btn icon danger" title="Delete page">🗑</button>
-            <button id="btn-extract" class="btn" title="Save current page as a new PDF">Extract</button>
-          </div>
-          <div class="sidebar-actions">
-            <button
-              id="btn-insert-blank"
-              class="btn"
-              title="Create a blank page; inserts after the current page when a PDF is open"
-            >
-              + Blank
-            </button>
-            <button id="btn-split" class="btn" title="Split into one file per page">Split…</button>
-            <button id="btn-reverse" class="btn" title="Reverse page order">Reverse</button>
-            <button id="btn-clear-crop" class="btn" title="Remove crop on the current page">Clear crop</button>
-          </div>
-
           <div id="thumbs" class="thumbs pane"></div>
           <div id="outline" class="outline pane hidden"></div>
           <div id="comments" class="comments pane hidden"></div>
+
+          <div class="page-actions">
+            <div class="page-actions-row">
+              <button id="btn-rot-left" class="btn icon" title="Rotate page left" aria-label="Rotate page left">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M3 10a9 9 0 1 1 2.6 6.4" />
+                  <path d="M3 4v6h6" />
+                </svg>
+              </button>
+              <button id="btn-rot-right" class="btn icon" title="Rotate page right" aria-label="Rotate page right">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M21 10a9 9 0 1 0-2.6 6.4" />
+                  <path d="M21 4v6h-6" />
+                </svg>
+              </button>
+              <button id="btn-move-up" class="btn icon" title="Move page up" aria-label="Move page up">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m6 14 6-6 6 6" />
+                </svg>
+              </button>
+              <button id="btn-move-down" class="btn icon" title="Move page down" aria-label="Move page down">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m6 10 6 6 6-6" />
+                </svg>
+              </button>
+              <button id="btn-delete" class="btn icon danger" title="Delete page" aria-label="Delete page">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 7h16" />
+                  <path d="M9 7V4h6v3" />
+                  <path d="m6 7 1 14h10l1-14" />
+                  <path d="M10 11v6M14 11v6" />
+                </svg>
+              </button>
+              <button id="btn-extract" class="btn page-action-text" title="Save current page as a new PDF">Extract</button>
+            </div>
+            <div class="page-actions-grid">
+              <button id="btn-insert-blank" class="btn" title="Create a blank page; inserts after the current page when a PDF is open">+ Blank</button>
+              <button id="btn-split" class="btn" title="Split into one file per page">Split&hellip;</button>
+              <button id="btn-reverse" class="btn" title="Reverse page order">Reverse</button>
+              <button id="btn-clear-crop" class="btn" title="Remove crop on the current page">Clear crop</button>
+            </div>
+          </div>
         </aside>
 
         <div
@@ -270,12 +331,17 @@
 
         <main id="viewer" class="viewer">
           <div id="empty" class="empty">
-            <h1>PDFzen</h1>
-            <p>
-              Open a PDF to view, annotate, fill and sign, drag a file here, or use
-              <strong>+ Blank</strong> to start a blank PDF.
-            </p>
+            <div class="empty-mark" aria-hidden="true">
+              <svg viewBox="0 0 64 64" focusable="false">
+                <path d="M16 6h22l12 12v40H16z" />
+                <path d="M38 6v13h12" />
+                <path d="M23 34h18M23 42h18M23 50h11" />
+              </svg>
+            </div>
+            <h1>No document open</h1>
+            <p>Open a PDF to view, annotate, fill and sign, or drop a file anywhere in this window.</p>
             <button id="btn-open-empty" class="btn primary">Open PDF</button>
+            <p class="empty-note">You can also use <strong>+ Blank</strong> to start a new PDF.</p>
           </div>
           <div id="pages" class="pages"></div>
         </main>
@@ -342,7 +408,13 @@
       <footer class="statusbar">
         <span id="status-page">No document</span>
         <span id="status-tool" class="muted">Select</span>
-        <span id="status-hint" class="muted push">Open a PDF to get started</span>
+        <span id="status-hint" class="muted">Open a PDF to get started</span>
+        <div class="status-zoom" role="group" aria-label="Zoom">
+          <button id="btn-zoom-out" class="btn icon" title="Zoom out" aria-label="Zoom out">&minus;</button>
+          <span id="zoom-label" class="label">100%</span>
+          <button id="btn-zoom-in" class="btn icon" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="btn-fit" class="btn" title="Fit width">Fit</button>
+        </div>
       </footer>
     </div>
 

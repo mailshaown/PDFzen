@@ -89,6 +89,8 @@ const els = {
   statusPage: document.getElementById("status-page"),
   statusTool: document.getElementById("status-tool"),
   statusHint: document.getElementById("status-hint"),
+  docTitle: document.getElementById("doc-title"),
+  docSubtitle: document.getElementById("doc-subtitle"),
   color: document.getElementById("color"),
   width: document.getElementById("width"),
   stampLabel: document.getElementById("stamp-label"),
@@ -304,6 +306,20 @@ function docBaseName() {
   if (!state.path) return "document";
   const file = state.path.split(/[\\/]/).pop() || "document";
   return file.replace(/\.pdf$/i, "");
+}
+
+function documentDisplayName() {
+  if (state.path) return state.path.split(/[\\/]/).pop() || "Document.pdf";
+  const first = state.pages[0];
+  if (first) {
+    const doc = state.docs.get(first.docId);
+    const name = String(doc?.name || "").trim();
+    if (name && !/^blank (document|page)$/i.test(name)) {
+      return /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+    }
+    return "Untitled.pdf";
+  }
+  return "No document open";
 }
 
 function sanitizeName(name) {
@@ -2581,6 +2597,7 @@ async function saveDocument(asNew) {
     const base64 = await invoke("build_pdf", { payload });
     await invoke("save_pdf", { path, data: base64 });
     state.path = path;
+    updateStatus();
     setHint(`Saved${state.security.enabled ? " (AES-256 protected)" : ""} ${path}`);
   } catch (err) {
     setHint("Save failed");
@@ -3790,6 +3807,12 @@ function updateStatus() {
   const annos = state.pages.reduce((sum, p) => sum + p.annos.length, 0);
   const forms = state.pages.reduce((sum, p) => sum + (p.fields?.length || 0), 0);
   const cropped = state.pages.filter((p) => p.crop).length;
+  const name = documentDisplayName();
+  els.docTitle.textContent = name;
+  els.docTitle.title = state.path || name;
+  els.docSubtitle.textContent = total
+    ? `${total} page${total === 1 ? "" : "s"}${forms ? ` · ${forms} form field${forms === 1 ? "" : "s"}` : ""}`
+    : "Open a PDF to begin";
   els.statusPage.textContent = total
     ? `Page ${state.current + 1} of ${total} · ${annos} annotation${annos === 1 ? "" : "s"}${cropped ? ` · ${cropped} cropped` : ""}`
     : "No document";
