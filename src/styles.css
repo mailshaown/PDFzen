@@ -2099,3 +2099,415 @@ body.tool-ink .stroke-width-field {
   color: var(--text);
   font-size: 11px;
 }
+
+/* ==================================================================
+   Modern polish
+   ================================================================== */
+
+:root {
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 28px 80px rgba(0, 0, 0, 0.32);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.app-bar {
+  background: linear-gradient(180deg, #303032 0%, #252526 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.command-bar {
+  background: linear-gradient(180deg, #fbfbfc 0%, #f5f6f8 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.statusbar {
+  background: linear-gradient(180deg, #fbfbfc 0%, #f5f6f8 100%);
+}
+
+:root[data-theme="dark"] .app-bar {
+  background: linear-gradient(180deg, #262628 0%, #1b1b1c 100%);
+}
+
+:root[data-theme="dark"] .command-bar {
+  background: linear-gradient(180deg, #2a2a2a 0%, #232323 100%);
+}
+
+:root[data-theme="dark"] .statusbar {
+  background: linear-gradient(180deg, #232323 0%, #1e1e1e 100%);
+}
+
+.btn,
+.tool,
+.tab,
+.thumb,
+.doc-tab,
+.menu button,
+.tutorial-close,
+.tutorial-dot {
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.14s ease;
+}
+
+.btn:focus-visible,
+.tool:focus-visible,
+.tab:focus-visible,
+.doc-tab:focus-visible,
+.tutorial-close:focus-visible,
+.tutorial-dot:focus-visible,
+.tutorial-skip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, #2e8ef2 0%, #1473e6 100%);
+  border-color: #0f65cc;
+  box-shadow: 0 1px 2px rgba(15, 101, 204, 0.25);
+}
+
+.btn.primary:hover {
+  background: linear-gradient(180deg, #3d98f5 0%, #0d66d0 100%);
+}
+
+:root[data-theme="dark"] .btn.primary {
+  background: linear-gradient(180deg, #4a9bf5 0%, #2f80e8 100%);
+  border-color: #2f80e8;
+}
+
+.app-bar .btn.primary {
+  background: linear-gradient(180deg, #2e8ef2 0%, #1473e6 100%);
+  border-color: #0f65cc;
+}
+
+.app-bar .btn.primary:hover {
+  background: linear-gradient(180deg, #3d98f5 0%, #0d66d0 100%);
+}
+
+.doc-tab:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.tab:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:root[data-theme="dark"] .tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.thumb:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.thumb.selected {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="search"]:focus,
+.text-input:focus,
+.select:focus,
+.comment-popover-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.menu:not(.hidden) {
+  animation: menu-in 0.14s ease both;
+}
+
+.modal:not(.hidden) .modal-card {
+  animation: modal-in 0.18s ease both;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ==================================================================
+   First-run tour
+   ================================================================== */
+
+.tutorial {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.tutorial.center {
+  background: rgba(8, 10, 14, 0.62);
+}
+
+.tutorial-spotlight {
+  position: fixed;
+  z-index: 120;
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 9999px rgba(8, 10, 14, 0.62),
+    0 0 0 2px rgba(20, 115, 230, 0.95),
+    0 0 0 9px rgba(20, 115, 230, 0.18);
+  transition:
+    left 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.18s ease;
+}
+
+.tutorial.center .tutorial-spotlight {
+  opacity: 0;
+}
+
+.tutorial-card {
+  position: fixed;
+  z-index: 121;
+  width: min(380px, calc(100vw - 32px));
+  padding: 20px 20px 16px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  outline: none;
+  animation: tutorial-in 0.2s ease both;
+}
+
+.tutorial-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), #7cc4ff);
+}
+
+.tutorial-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tutorial-step {
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tutorial-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tutorial-close:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.tutorial-card h2 {
+  margin: 0 0 7px;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.tutorial-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.tutorial-tip {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  color: var(--text);
+  background: var(--accent-soft);
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.tutorial-tip::before {
+  content: "Tip";
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tutorial-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 16px 0 14px;
+}
+
+.tutorial-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  background: var(--border);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tutorial-dot:hover {
+  background: var(--muted);
+}
+
+.tutorial-dot.active {
+  width: 20px;
+  background: var(--accent);
+}
+
+.tutorial-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tutorial-skip {
+  padding: 5px 2px;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.tutorial-skip:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+:root[data-theme="dark"] .tutorial-skip {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+:root[data-theme="dark"] .tutorial-skip:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.tutorial-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tutorial-nav .btn {
+  min-width: 72px;
+}
+
+.tutorial-nav .btn.primary {
+  box-shadow: 0 4px 12px rgba(20, 115, 230, 0.28);
+}
+
+@keyframes tutorial-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .tutorial-card {
+    width: calc(100vw - 24px);
+    padding: 18px 16px 14px;
+  }
+
+  .tutorial-actions {
+    flex-wrap: wrap;
+  }
+}

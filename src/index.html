@@ -87,6 +87,13 @@
               </div>
               <button id="btn-sign" class="btn" title="Draw and place a signature">Sign&hellip;</button>
               <button id="btn-options" class="btn" title="Document &amp; save options">Options&hellip;</button>
+              <button id="btn-tutorial" class="btn icon" title="Take a tour" aria-label="Take a tour">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9.4 9.1a2.6 2.6 0 1 1 4.3 1.9c-.8.7-1.7 1.2-1.7 2.7" />
+                  <path d="M12 17.2h.01" />
+                </svg>
+              </button>
               <div class="menu-wrap theme-wrap">
                 <button
                   id="btn-theme"
@@ -532,6 +539,37 @@
           <button id="password-cancel" class="btn">Cancel</button>
           <span class="push"></span>
           <button id="password-open" class="btn primary">Open</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- first-run tour -->
+    <div
+      id="tutorial"
+      class="tutorial hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tutorial-title"
+      aria-describedby="tutorial-body"
+    >
+      <div id="tutorial-spotlight" class="tutorial-spotlight" aria-hidden="true"></div>
+      <div id="tutorial-card" class="tutorial-card" tabindex="-1">
+        <div class="tutorial-head">
+          <span id="tutorial-step" class="tutorial-step">Step 1 of 8</span>
+          <button id="tutorial-close" class="tutorial-close" type="button" title="Skip tour" aria-label="Skip tour">
+            &times;
+          </button>
+        </div>
+        <h2 id="tutorial-title">Welcome to PDFzen</h2>
+        <p id="tutorial-body" class="tutorial-body"></p>
+        <div id="tutorial-tip" class="tutorial-tip hidden"></div>
+        <div id="tutorial-dots" class="tutorial-dots" role="group" aria-label="Tour progress"></div>
+        <div class="tutorial-actions">
+          <button id="tutorial-skip" class="btn tutorial-skip" type="button">Skip tour</button>
+          <div class="tutorial-nav">
+            <button id="tutorial-back" class="btn" type="button">Back</button>
+            <button id="tutorial-next" class="btn primary" type="button">Start tour</button>
+          </div>
         </div>
       </div>
     </div>

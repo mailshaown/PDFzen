@@ -4276,6 +4276,10 @@ els.viewer.addEventListener("scroll", () => {
 
 // keyboard
 window.addEventListener("keydown", (ev) => {
+  if (tutorialActive) {
+    if (ev.key === "Escape") closeTutorial(true);
+    return;
+  }
   const typing =
     ev.target instanceof HTMLInputElement ||
     ev.target instanceof HTMLTextAreaElement ||
@@ -4414,6 +4418,298 @@ try {
 }
 
 /* ------------------------------------------------------------------ *
+ * first-run tour
+ * ------------------------------------------------------------------ */
+
+const TUTORIAL_KEY = "pdfzen-tutorial-v1";
+
+const TUTORIAL_STEPS = [
+  {
+    title: "Welcome to PDFzen",
+    body: "A quick tour of the essentials. It takes less than a minute, and you can skip whenever you like.",
+    tip: "You can reopen this tour anytime from the ? button in the top bar.",
+    target: null,
+    placement: "center",
+  },
+  {
+    title: "Open your first PDF",
+    body: "Click Open to choose a PDF from your computer. You can also drag and drop a file anywhere in the window, or press Ctrl+O.",
+    tip: "Password-protected PDFs are supported — PDFzen will ask for the password.",
+    target: "#btn-open",
+    placement: "bottom",
+  },
+  {
+    title: "Move around the document",
+    body: "The Pages panel shows a thumbnail of every page. Use Bookmarks to follow the document outline and Comments to review notes. Page actions live at the bottom.",
+    tip: "Drag the divider to resize the panel. Double-click it to reset the width.",
+    target: ".sidebar",
+    placement: "right",
+  },
+  {
+    title: "Annotate and mark up",
+    body: "Highlight, underline, strike through, draw with the Pen, or add text boxes, sticky notes and stamps. The Pen has its own Thickness control in the toolbar.",
+    tip: "Shortcuts: V select, H highlight, P pen, T text, N note.",
+    target: "#tool-group",
+    placement: "bottom",
+  },
+  {
+    title: "Fill forms and sign",
+    body: "Click any form field to fill it in. Use Sign to type or draw a signature, then drag it onto the page.",
+    tip: "Signature fields are saved as typed text. XFA-only forms are not supported.",
+    target: "#btn-sign",
+    placement: "bottom",
+  },
+  {
+    title: "Save and export",
+    body: "Save writes changes back to the current file. Save as creates a copy, and Export can produce text or images.",
+    tip: "Options lets you flatten annotations, add page numbers, watermark, password-protect and more.",
+    target: "#btn-save",
+    placement: "bottom",
+  },
+  {
+    title: "Find and zoom",
+    body: "Search the document from the command bar. The status bar shows page and form counts, plus zoom and Fit controls.",
+    tip: "Ctrl+F focuses search; Ctrl+plus and Ctrl+minus zoom.",
+    target: ".search-group",
+    placement: "bottom",
+  },
+  {
+    title: "You're ready",
+    body: "That's the tour. Open a PDF and explore at your own pace. You can replay this tour anytime from the ? button.",
+    tip: "Your files stay on your computer. PDFzen does not upload them.",
+    target: null,
+    placement: "center",
+  },
+];
+
+const tour = {
+  root: document.getElementById("tutorial"),
+  spotlight: document.getElementById("tutorial-spotlight"),
+  card: document.getElementById("tutorial-card"),
+  step: document.getElementById("tutorial-step"),
+  close: document.getElementById("tutorial-close"),
+  title: document.getElementById("tutorial-title"),
+  body: document.getElementById("tutorial-body"),
+  tip: document.getElementById("tutorial-tip"),
+  dots: document.getElementById("tutorial-dots"),
+  skip: document.getElementById("tutorial-skip"),
+  back: document.getElementById("tutorial-back"),
+  next: document.getElementById("tutorial-next"),
+};
+
+let tutorialIndex = 0;
+let tutorialActive = false;
+let tutorialReturnFocus = null;
+
+function tutorialComplete() {
+  try {
+    return localStorage.getItem(TUTORIAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markTutorialComplete() {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, "1");
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+function renderTutorialDots() {
+  tour.dots.replaceChildren();
+  TUTORIAL_STEPS.forEach((_, index) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = `tutorial-dot${index === tutorialIndex ? " active" : ""}`;
+    dot.setAttribute("aria-label", `Go to step ${index + 1}`);
+    if (index === tutorialIndex) dot.setAttribute("aria-current", "step");
+    dot.addEventListener("click", () => tutorialGoTo(index));
+    tour.dots.append(dot);
+  });
+}
+
+function renderTutorial() {
+  const step = TUTORIAL_STEPS[tutorialIndex];
+  tour.step.textContent = `Step ${tutorialIndex + 1} of ${TUTORIAL_STEPS.length}`;
+  tour.title.textContent = step.title;
+  tour.body.textContent = step.body;
+  tour.tip.textContent = step.tip || "";
+  tour.tip.classList.toggle("hidden", !step.tip);
+  tour.back.disabled = tutorialIndex === 0;
+  tour.next.textContent =
+    tutorialIndex === TUTORIAL_STEPS.length - 1
+      ? "Finish"
+      : tutorialIndex === 0
+        ? "Start tour"
+        : "Next";
+  tour.skip.classList.toggle("hidden", tutorialIndex === TUTORIAL_STEPS.length - 1);
+  renderTutorialDots();
+  requestAnimationFrame(positionTutorial);
+}
+
+function positionTutorial() {
+  if (!tutorialActive) return;
+  const step = TUTORIAL_STEPS[tutorialIndex];
+  const target = step.target ? document.querySelector(step.target) : null;
+  const card = tour.card;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const pad = 14;
+  const cw = card.offsetWidth;
+  const ch = card.offsetHeight;
+
+  if (!target || !target.getClientRects().length) {
+    tour.root.classList.add("center");
+    tour.spotlight.style.opacity = "0";
+    card.style.left = `${Math.round(Math.max(12, (vw - cw) / 2))}px`;
+    card.style.top = `${Math.round(Math.max(12, (vh - ch) / 2))}px`;
+    card.style.transform = "none";
+    return;
+  }
+
+  tour.root.classList.remove("center");
+  tour.spotlight.style.opacity = "1";
+  const r = target.getBoundingClientRect();
+  const spotPad = 6;
+  const sx = clamp(r.left - spotPad, 4, vw - 4);
+  const sy = clamp(r.top - spotPad, 4, vh - 4);
+  const sw = Math.max(0, Math.min(r.width + spotPad * 2, vw - sx - 4));
+  const sh = Math.max(0, Math.min(r.height + spotPad * 2, vh - sy - 4));
+  tour.spotlight.style.left = `${sx}px`;
+  tour.spotlight.style.top = `${sy}px`;
+  tour.spotlight.style.width = `${sw}px`;
+  tour.spotlight.style.height = `${sh}px`;
+
+  const gap = 16;
+  const placements = step.placement
+    ? [step.placement, "bottom", "top", "right", "left"]
+    : ["bottom", "top", "right", "left"];
+  let left = pad;
+  let top = pad;
+
+  for (const placement of placements) {
+    if (placement === "bottom") {
+      left = sx + sw / 2 - cw / 2;
+      top = sy + sh + gap;
+    } else if (placement === "top") {
+      left = sx + sw / 2 - cw / 2;
+      top = sy - ch - gap;
+    } else if (placement === "right") {
+      left = sx + sw + gap;
+      top = sy + sh / 2 - ch / 2;
+    } else {
+      left = sx - cw - gap;
+      top = sy + sh / 2 - ch / 2;
+    }
+
+    left = clamp(left, pad, Math.max(pad, vw - cw - pad));
+    top = clamp(top, pad, Math.max(pad, vh - ch - pad));
+    const overlaps = !(left + cw <= sx || left >= sx + sw || top + ch <= sy || top >= sy + sh);
+    if (!overlaps) break;
+  }
+
+  card.style.left = `${Math.round(left)}px`;
+  card.style.top = `${Math.round(top)}px`;
+  card.style.transform = "none";
+}
+
+function openTutorial(index = 0) {
+  if (tutorialActive) {
+    tutorialGoTo(index);
+    return;
+  }
+  tutorialActive = true;
+  tutorialIndex = clamp(index, 0, TUTORIAL_STEPS.length - 1);
+  tutorialReturnFocus = document.activeElement;
+  tour.root.classList.remove("hidden");
+  document.body.classList.add("tutorial-open");
+  renderTutorial();
+  setTimeout(() => tour.next.focus(), 0);
+}
+
+function closeTutorial(markComplete = false) {
+  if (!tutorialActive) return;
+  tutorialActive = false;
+  if (markComplete) markTutorialComplete();
+  tour.root.classList.add("hidden");
+  document.body.classList.remove("tutorial-open");
+  if (tutorialReturnFocus instanceof HTMLElement) tutorialReturnFocus.focus();
+  tutorialReturnFocus = null;
+}
+
+function tutorialGoTo(index) {
+  tutorialIndex = clamp(index, 0, TUTORIAL_STEPS.length - 1);
+  renderTutorial();
+  tour.next.focus();
+}
+
+function tutorialNext() {
+  if (tutorialIndex >= TUTORIAL_STEPS.length - 1) {
+    closeTutorial(true);
+    return;
+  }
+  tutorialGoTo(tutorialIndex + 1);
+}
+
+function tutorialBack() {
+  if (tutorialIndex > 0) tutorialGoTo(tutorialIndex - 1);
+}
+
+function initTutorial() {
+  document.getElementById("btn-tutorial").addEventListener("click", () => openTutorial(0));
+  tour.next.addEventListener("click", tutorialNext);
+  tour.back.addEventListener("click", tutorialBack);
+  tour.skip.addEventListener("click", () => closeTutorial(true));
+  tour.close.addEventListener("click", () => closeTutorial(true));
+
+  tour.root.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeTutorial(true);
+      return;
+    }
+    if (ev.key === "ArrowRight") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tutorialNext();
+      return;
+    }
+    if (ev.key === "ArrowLeft") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tutorialBack();
+      return;
+    }
+    if (ev.key !== "Tab") return;
+    const focusable = Array.from(tour.card.querySelectorAll("button:not(:disabled)"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      first.focus();
+    }
+  });
+
+  window.addEventListener("resize", positionTutorial);
+  window.addEventListener("scroll", positionTutorial, true);
+
+  if (!tutorialComplete()) {
+    setTimeout(() => {
+      if (!tutorialActive && !tutorialComplete()) openTutorial(0);
+    }, 1000);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * boot
  * ------------------------------------------------------------------ */
 
@@ -4436,6 +4732,7 @@ els.width.value = String(state.strokeWidth);
 els.penWidth.value = String(state.penWidth);
 els.penWidthValue.textContent = `${state.penWidth} pt`;
 setHint("Open a PDF to get started");
+initTutorial();
 
 // Small debug handle used by the automated UI checks and CDP verification.
 window.__pdfed = {
@@ -4451,6 +4748,8 @@ window.__pdfed = {
   openCommentPopover,
   runSearch,
   saveDocument,
+  openTutorial,
+  closeTutorial,
   exportText,
   exportPng,
   exportEmbeddedImages,
