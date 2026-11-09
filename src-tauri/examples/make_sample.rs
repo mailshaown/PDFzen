@@ -187,6 +187,7 @@ fn main() {
                 label: None,
             },
         ],
+        forms: vec![],
         flatten: false,
         remove_metadata: false,
         info: None,

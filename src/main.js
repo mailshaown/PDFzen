@@ -98,6 +98,7 @@ const els = {
   penWidthValue: document.getElementById("pen-width-value"),
   stampLabel: document.getElementById("stamp-label"),
   exportMenu: document.getElementById("export-menu"),
+  convertMenu: document.getElementById("convert-menu"),
   themeMenu: document.getElementById("theme-menu"),
   bookmarkTools: document.getElementById("bookmark-tools"),
   bookmarkTitle: document.getElementById("bookmark-title"),
@@ -3515,6 +3516,204 @@ async function createPdfFromImages() {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Word <-> PDF conversion
+ * ------------------------------------------------------------------ */
+
+function fileBaseName(path) {
+  const file = String(path || "").split(/[\\/]/).pop() || "document";
+  return file.replace(/\.[^.]+$/, "") || "document";
+}
+
+// Group the text items on one pdf.js page into visual lines, then into
+// paragraphs separated by larger vertical gaps. The result is intentionally
+// simple: it preserves the text, line breaks and page breaks of the PDF
+// without pretending to rebuild complex layouts.
+function paragraphsFromTextContent(content) {
+  const lines = [];
+  let current = null;
+  for (const item of content.items) {
+    if (!item || typeof item.str !== "string" || !item.str.trim()) continue;
+    const transform = item.transform || [1, 0, 0, 1, 0, 0];
+    const x = Number(transform[4]) || 0;
+    const y = Number(transform[5]) || 0;
+    const height = Math.abs(Number(item.height) || Number(transform[3]) || 10);
+    if (!current || Math.abs(current.y - y) > Math.max(2, height * 0.45)) {
+      if (current) lines.push(current);
+      current = { x, y, height, text: item.str, x2: x };
+    } else {
+      const gap = x - current.x2;
+      const needsSpace =
+        gap > Math.max(1.5, height * 0.12) &&
+        !/\s$/.test(current.text) &&
+        !/^\s/.test(item.str);
+      current.text += (needsSpace ? " " : "") + item.str;
+      current.y = (current.y + y) / 2;
+    }
+    current.x2 = Math.max(current.x2, x + (Number(item.width) || 0));
+  }
+  if (current) lines.push(current);
+
+  const paragraphs = [];
+  let paragraph = [];
+  let previous = null;
+  for (const line of lines) {
+    const text = line.text.replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    if (previous) {
+      const gap = previous.y - line.y;
+      const threshold = Math.max(previous.height, line.height) * 1.6;
+      if (gap > threshold && paragraph.length) {
+        paragraphs.push(paragraph.join("\n"));
+        paragraph = [];
+      }
+    }
+    paragraph.push(text);
+    previous = line;
+  }
+  if (paragraph.length) paragraphs.push(paragraph.join("\n"));
+  return paragraphs;
+}
+
+async function extractTextFromPdfDocument(pdf) {
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pages.push(paragraphsFromTextContent(content));
+  }
+  return pages;
+}
+
+// Annotation text and filled form values live in annotation/widget objects,
+// not in the page content stream, so pdf.js text extraction cannot see them.
+// Add them explicitly so the Word document keeps the current edits.
+function annotationTextForPage(entry, includeAnnotations) {
+  const texts = [];
+  if (includeAnnotations) {
+    for (const anno of entry.annos || []) {
+      const text = String(anno.text || "").trim();
+      if (text) texts.push(text);
+    }
+  }
+  for (const field of entry.fields || []) {
+    if (field.kind === "text" || field.kind === "choice") {
+      const value = String(field.value || (field.values || []).join(", ")).trim();
+      if (value) texts.push(value);
+    } else if (field.checked) {
+      const value = String(field.exportValue || field.name || "").trim();
+      if (value) texts.push(value);
+    }
+  }
+  return texts;
+}
+
+// Extract the current document (including annotations, form values and page
+// edits) by rebuilding it in memory first. If rebuilding fails, fall back to
+// the text of the pages as they are currently loaded.
+async function extractTextForWord() {
+  let pages = null;
+  try {
+    const payload = await buildPayload(state.pages, false, false);
+    const base64 = await invoke("build_pdf", { payload });
+    const pdf = await pdfjsLib.getDocument({ data: base64ToBytes(base64) }).promise;
+    pages = await extractTextFromPdfDocument(pdf);
+  } catch (err) {
+    console.warn("could not extract text from the edited PDF", err);
+  }
+
+  if (!pages) {
+    pages = [];
+    for (const entry of state.pages) {
+      const info = await pageInfo(entry);
+      const content = await info.page.getTextContent();
+      pages.push(paragraphsFromTextContent(content));
+    }
+  }
+
+  // Flattened annotations are already baked into the page content, so only add
+  // their text when they are still separate annotation objects.
+  const includeAnnotations = !state.settings.flatten;
+  pages.forEach((paragraphs, index) => {
+    const entry = state.pages[index];
+    if (!entry) return;
+    const extra = annotationTextForPage(entry, includeAnnotations);
+    if (extra.length) paragraphs.push(...extra);
+  });
+
+  return JSON.stringify({ title: docBaseName(), pages });
+}
+
+async function convertWordToPdf() {
+  const picked = await openDialog({
+    multiple: false,
+    title: "Choose a Word document to convert",
+    filters: [{ name: "Word documents", extensions: ["docx", "doc"] }],
+  });
+  if (!picked) return;
+  const input = Array.isArray(picked) ? picked[0] : picked;
+  const output = await saveDialog({
+    defaultPath: `${fileBaseName(input)}.pdf`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (!output) return;
+  setHint("Converting Word to PDF…");
+  try {
+    await invoke("convert_word_to_pdf", { input, output });
+    setHint(`Converted to ${output}`);
+    await openPath(output, "replace");
+  } catch (err) {
+    setHint("Word to PDF conversion failed");
+    alert(`Could not convert Word to PDF:\n${err}`);
+  }
+}
+
+async function convertPdfToWord() {
+  if (!state.pages.length) {
+    const picked = await openDialog({
+      multiple: false,
+      title: "Choose a PDF to convert",
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (!picked) return;
+    const path = Array.isArray(picked) ? picked[0] : picked;
+    await openPath(path, "replace");
+    if (!state.pages.length) return;
+  }
+
+  const output = await saveDialog({
+    defaultPath: `${docBaseName()}.docx`,
+    filters: [{ name: "Word document", extensions: ["docx"] }],
+  });
+  if (!output) return;
+
+  setHint("Converting PDF to Word…");
+  try {
+    const payload = await extractTextForWord();
+    const parsed = JSON.parse(payload);
+    const hasText = parsed.pages.some((page) => page.some((paragraph) => paragraph.trim()));
+    if (!hasText) {
+      setHint("No selectable text found");
+      alert(
+        "This PDF does not contain selectable text. Scanned pages need OCR before they can be converted to Word.",
+      );
+      return;
+    }
+    await invoke("convert_pdf_to_word", { payload, output });
+    setHint(`Converted to ${output}`);
+    if (confirm("PDF converted to Word. Open the document now?")) {
+      try {
+        await invoke("open_external", { path: output });
+      } catch (err) {
+        alert(`Could not open the Word document:\n${err}`);
+      }
+    }
+  } catch (err) {
+    setHint("PDF to Word conversion failed");
+    alert(`Could not convert PDF to Word:\n${err}`);
+  }
+}
+
 async function printDocument() {
   if (!state.pages.length) return;
   setHint("Preparing print…");
@@ -4109,21 +4308,37 @@ function positionFloatingMenu(button, menu) {
 }
 
 const exportButton = document.getElementById("btn-export");
+const convertButton = document.getElementById("btn-convert");
 const themeButton = document.getElementById("btn-theme");
 
 exportButton.addEventListener("click", (ev) => {
   ev.stopPropagation();
   const opening = els.exportMenu.classList.contains("hidden");
+  els.convertMenu.classList.add("hidden");
   els.themeMenu.classList.add("hidden");
+  convertButton.setAttribute("aria-expanded", "false");
   themeButton.setAttribute("aria-expanded", "false");
   els.exportMenu.classList.toggle("hidden");
   if (opening) positionFloatingMenu(exportButton, els.exportMenu);
+});
+
+convertButton.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const opening = els.convertMenu.classList.contains("hidden");
+  els.exportMenu.classList.add("hidden");
+  els.themeMenu.classList.add("hidden");
+  themeButton.setAttribute("aria-expanded", "false");
+  els.convertMenu.classList.toggle("hidden");
+  convertButton.setAttribute("aria-expanded", String(opening));
+  if (opening) positionFloatingMenu(convertButton, els.convertMenu);
 });
 
 themeButton.addEventListener("click", (ev) => {
   ev.stopPropagation();
   const opening = els.themeMenu.classList.contains("hidden");
   els.exportMenu.classList.add("hidden");
+  els.convertMenu.classList.add("hidden");
+  convertButton.setAttribute("aria-expanded", "false");
   els.themeMenu.classList.toggle("hidden");
   themeButton.setAttribute("aria-expanded", String(opening));
   if (opening) positionFloatingMenu(themeButton, els.themeMenu);
@@ -4131,6 +4346,7 @@ themeButton.addEventListener("click", (ev) => {
 
 window.addEventListener("resize", () => {
   if (!els.exportMenu.classList.contains("hidden")) positionFloatingMenu(exportButton, els.exportMenu);
+  if (!els.convertMenu.classList.contains("hidden")) positionFloatingMenu(convertButton, els.convertMenu);
   if (!els.themeMenu.classList.contains("hidden")) positionFloatingMenu(themeButton, els.themeMenu);
   if (els.sidebar) {
     setSidebarWidth(els.sidebar.getBoundingClientRect().width);
@@ -4149,6 +4365,16 @@ document.querySelectorAll("#export-menu button").forEach((btn) => {
   });
 });
 
+document.querySelectorAll("#convert-menu button").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    els.convertMenu.classList.add("hidden");
+    convertButton.setAttribute("aria-expanded", "false");
+    const kind = btn.dataset.convert;
+    if (kind === "word-to-pdf") await convertWordToPdf();
+    else if (kind === "pdf-to-word") await convertPdfToWord();
+  });
+});
+
 document.querySelectorAll("#theme-menu button[data-theme]").forEach((item) => {
   item.addEventListener("click", () => {
     applyTheme(item.dataset.theme, true);
@@ -4159,7 +4385,9 @@ document.querySelectorAll("#theme-menu button[data-theme]").forEach((item) => {
 
 document.addEventListener("click", () => {
   els.exportMenu.classList.add("hidden");
+  els.convertMenu.classList.add("hidden");
   els.themeMenu.classList.add("hidden");
+  convertButton.setAttribute("aria-expanded", "false");
   themeButton.setAttribute("aria-expanded", "false");
 });
 
@@ -4292,7 +4520,9 @@ window.addEventListener("keydown", (ev) => {
     els.modalSign.classList.add("hidden");
     els.modalOptions.classList.add("hidden");
     els.exportMenu.classList.add("hidden");
+    els.convertMenu.classList.add("hidden");
     els.themeMenu.classList.add("hidden");
+    document.getElementById("btn-convert").setAttribute("aria-expanded", "false");
     document.getElementById("btn-theme").setAttribute("aria-expanded", "false");
     if (state.pendingImage && state.tool === "image") {
       state.pendingImage = null;
@@ -4460,9 +4690,9 @@ const TUTORIAL_STEPS = [
     placement: "bottom",
   },
   {
-    title: "Save and export",
-    body: "Save writes changes back to the current file. Save as creates a copy, and Export can produce text or images.",
-    tip: "Options lets you flatten annotations, add page numbers, watermark, password-protect and more.",
+    title: "Save, export and convert",
+    body: "Save writes changes back to the current file. Save as creates a copy, and Export can produce text or images. The Convert button turns Word documents into PDF (requires Microsoft Word) and turns the open PDF into an editable Word document.",
+    tip: "PDF to Word keeps the selectable text, page breaks and line breaks; scanned pages need OCR first.",
     target: "#btn-save",
     placement: "bottom",
   },
@@ -4753,6 +4983,9 @@ window.__pdfed = {
   exportText,
   exportPng,
   exportEmbeddedImages,
+  extractTextForWord,
+  convertWordToPdf,
+  convertPdfToWord,
   chooseOpen,
   chooseAdd,
   insertBlankPage,

@@ -85,6 +85,27 @@
                   <button data-export="images-pdf">Create PDF from images&hellip;</button>
                 </div>
               </div>
+              <div class="menu-wrap">
+                <button
+                  id="btn-convert"
+                  class="btn icon"
+                  title="Convert between Word and PDF"
+                  aria-label="Convert between Word and PDF"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                >
+                  <svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M5 3.5h9l5 5v12H5z" />
+                    <path d="M14 3.5v5h5" />
+                    <path d="M8.5 13h6" />
+                    <path d="m12.5 10.5 2.5 2.5-2.5 2.5" />
+                  </svg>
+                </button>
+                <div id="convert-menu" class="menu hidden" role="menu" aria-label="Convert">
+                  <button type="button" data-convert="word-to-pdf" role="menuitem">Word to PDF&hellip;</button>
+                  <button type="button" data-convert="pdf-to-word" role="menuitem">PDF to Word&hellip;</button>
+                </div>
+              </div>
               <button id="btn-sign" class="btn" title="Draw and place a signature">Sign&hellip;</button>
               <button id="btn-options" class="btn" title="Document &amp; save options">Options&hellip;</button>
               <button id="btn-tutorial" class="btn icon" title="Take a tour" aria-label="Take a tour">

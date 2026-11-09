@@ -1,5 +1,6 @@
 //! PDF composition engine shared by the app and by tests/examples.
 
+pub mod convert;
 mod pdf;
 mod security;
 

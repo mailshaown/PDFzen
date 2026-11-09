@@ -66,6 +66,27 @@ fn extract_pdf_images(data: String) -> Result<Vec<ExtractedImage>, String> {
     extract_images(&bytes)
 }
 
+/// Convert a Word document to PDF with Microsoft Word.
+#[tauri::command]
+fn convert_word_to_pdf(input: String, output: String) -> Result<(), String> {
+    pdfzen_lib::convert::word_to_pdf(&input, &output)
+}
+
+/// Build a Word document from text extracted from a PDF.
+#[tauri::command]
+fn convert_pdf_to_word(payload: String, output: String) -> Result<(), String> {
+    pdfzen_lib::convert::text_to_word(&payload, &output)
+}
+
+/// Open a generated file with its default application.
+#[tauri::command]
+fn open_external(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -78,7 +99,10 @@ pub fn run() {
             build_pdf,
             blank_pdf,
             create_pdf_from_images,
-            extract_pdf_images
+            extract_pdf_images,
+            convert_word_to_pdf,
+            convert_pdf_to_word,
+            open_external
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

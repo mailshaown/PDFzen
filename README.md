@@ -116,6 +116,15 @@ and delete them from the Comments pane.
 - Black-box redaction overlay (see limitations).
 - Print, export page text to `.txt`, export the current page to PNG, and extract
   embedded raster images to a folder.
+- Convert between Word and PDF from the **Convert** menu in the top bar:
+  - **Word to PDF** opens a `.docx`/`.doc` file and saves it as a PDF, then opens
+    the result in PDFzen. This uses Microsoft Word automation, so Microsoft Word
+    must be installed; the conversion runs locally and never uploads the file.
+  - **PDF to Word** exports the open document (including annotations, form values
+    and page edits) to a `.docx` file, then offers to open it in Word. Page
+    breaks, line breaks and paragraph gaps are preserved. This path extracts
+    selectable text with pdf.js and builds the DOCX in Rust, so it does not
+    require Word and works offline. Scanned pages need OCR first.
 
 ## Keyboard shortcuts
 
@@ -156,6 +165,7 @@ because the PDF writer silently drops direct streams inside a `/Contents` array.
 src/                 front end (index.html, main.js, styles.css)
 src/vendor/          vendored pdf.js 3.11 UMD build + worker (offline)
 src-tauri/src/pdf.rs PDF composition engine
+src-tauri/src/convert.rs Word <-> PDF conversion (Word COM + docx-rs)
 src-tauri/src/main.rs Tauri commands (open_pdf, save_pdf, build_pdf, …) + app
 src-tauri/examples/make_sample.rs  generates sample.pdf
 src-tauri/examples/form_fixture.rs generates an interactive AcroForm fixture
@@ -199,10 +209,16 @@ cargo run --example form_fixture -- form-fixture.pdf
   preserved. XFA-only forms are not supported. Signature fields are saved as
   typed text fields, not cryptographic signatures. Flatten annotations does not
   flatten form fields.
-- **No OCR, Word/Office export, or in-place text/image editing**. Existing
+- **No OCR or in-place text/image editing**. Existing
   highlight, underline, strikeout, squiggly, sticky-note, free-text and square
   annotations are imported for viewing and editing. Imported Ink and Stamp
   annotations are not reconstructed in the editor.
+- **Word to PDF requires Microsoft Word** and uses its COM automation. Word must
+  be installed on the same computer; the conversion is local and offline.
+- **PDF to Word recreates text, not layout.** It preserves page breaks, line
+  breaks and paragraph gaps, but columns, tables, images, fonts and complex
+  formatting are not rebuilt. Scanned PDFs have no selectable text and must be
+  OCR'd before conversion.
 - **Sticky notes are dropped when flattening** because they have no appearance
   stream. Keep flattening off to preserve `/Text` note annotations.
 - **Imported annotations are re-created when saving.** The editor keeps imported
